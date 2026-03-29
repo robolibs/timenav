@@ -57,6 +57,7 @@ namespace {
         root.add_child(std::move(child_b));
 
         TestWorkspace fixture{zoneout::Workspace(std::move(root))};
+        fixture.workspace.set_ref(dp::Geo{52.0, 5.0, 10.0});
 
         fixture.node_a_id = zoneout::UUID("11111111-1111-4111-8111-111111111111");
         fixture.node_b_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
@@ -359,4 +360,17 @@ TEST_CASE("workspace index resolves an edge between two nodes") {
     CHECK(index.edge_between(fixture.node_b_id, fixture.node_a_id)->id == fixture.edge_ab_id);
     CHECK(index.edge_between(fixture.node_a_id, fixture.node_c_id) == nullptr);
     CHECK(index.edge_between(fixture.node_a_id, zoneout::UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")) == nullptr);
+}
+
+TEST_CASE("workspace index exposes the workspace reference origin") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    REQUIRE(index.ref().has_value());
+    CHECK(index.ref()->latitude == doctest::Approx(52.0));
+    CHECK(index.ref()->longitude == doctest::Approx(5.0));
+    CHECK(index.ref()->altitude == doctest::Approx(10.0));
+
+    const timenav::WorkspaceIndex empty_index{};
+    CHECK_FALSE(empty_index.ref().has_value());
 }

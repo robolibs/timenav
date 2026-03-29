@@ -129,6 +129,13 @@ namespace timenav {
             const auto reverse_edge_id = workspace_->graph().get_edge(node_b_it->second, node_a_it->second);
             return reverse_edge_id.has_value() ? &workspace_->graph().edge_property(*reverse_edge_id) : nullptr;
         }
+        [[nodiscard]] dp::Optional<dp::Geo> ref() const {
+            if (workspace_ == nullptr || !workspace_->has_ref()) {
+                return dp::nullopt;
+            }
+
+            return workspace_->ref();
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();
