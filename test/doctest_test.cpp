@@ -45,6 +45,14 @@ namespace {
                            .with_datum(dp::Geo{52.0, 5.0, 0.0})
                            .build();
 
+        auto grandchild = zoneout::ZoneBuilder()
+                              .with_name("grandchild-a1")
+                              .with_type("lane")
+                              .with_boundary(rectangle(12.0, 12.0, 18.0, 18.0))
+                              .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                              .build();
+
+        child_a.add_child(std::move(grandchild));
         root.add_child(std::move(child_a));
         root.add_child(std::move(child_b));
 
@@ -134,6 +142,7 @@ TEST_CASE("workspace index resolves zones by uuid") {
 
     const auto &child_a = root.children().at(0);
     const auto &child_b = root.children().at(1);
+    const auto &grandchild = child_a.children().at(0);
 
     const timenav::WorkspaceIndex index{workspace};
 
@@ -143,6 +152,8 @@ TEST_CASE("workspace index resolves zones by uuid") {
     CHECK(index.zone(child_a.id())->name() == "child-a");
     REQUIRE(index.zone(child_b.id()) != nullptr);
     CHECK(index.zone(child_b.id())->name() == "child-b");
+    REQUIRE(index.zone(grandchild.id()) != nullptr);
+    CHECK(index.zone(grandchild.id())->name() == "grandchild-a1");
     CHECK(index.zone(zoneout::UUID{}) == nullptr);
 }
 
@@ -168,4 +179,32 @@ TEST_CASE("workspace index resolves edges by uuid") {
     REQUIRE(index.edge(fixture.edge_bc_id) != nullptr);
     CHECK(index.edge(fixture.edge_bc_id)->id == fixture.edge_bc_id);
     CHECK(index.edge(zoneout::UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")) == nullptr);
+}
+
+TEST_CASE("workspace index resolves parent and child zones") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+    const auto &grandchild = child_a.children().at(0);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    CHECK(index.parent_zone(root.id()) == nullptr);
+    REQUIRE(index.parent_zone(child_a.id()) != nullptr);
+    CHECK(index.parent_zone(child_a.id())->id() == root.id());
+    REQUIRE(index.parent_zone(child_b.id()) != nullptr);
+    CHECK(index.parent_zone(child_b.id())->id() == root.id());
+    REQUIRE(index.parent_zone(grandchild.id()) != nullptr);
+    CHECK(index.parent_zone(grandchild.id())->id() == child_a.id());
+
+    const auto root_children = index.child_zones(root.id());
+    REQUIRE(root_children.size() == 2);
+    CHECK(root_children[0]->id() == child_a.id());
+    CHECK(root_children[1]->id() == child_b.id());
+
+    const auto child_a_children = index.child_zones(child_a.id());
+    REQUIRE(child_a_children.size() == 1);
+    CHECK(child_a_children[0]->id() == grandchild.id());
+    CHECK(index.child_zones(child_b.id()).empty());
 }
