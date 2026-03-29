@@ -715,6 +715,13 @@ TEST_CASE("coordinator updates robot progress by node and edge") {
 
     timenav::RobotState state{};
     state.robot_id = timenav::RobotId{51};
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+    state.route_plan = route_plan.value();
     coordinator.register_robot(state);
 
     CHECK(coordinator.update_robot_progress(timenav::RobotId{51}, fixture.node_b_id, fixture.edge_bc_id, 42));
@@ -723,7 +730,12 @@ TEST_CASE("coordinator updates robot progress by node and edge") {
     REQUIRE(coordinator.find_robot_state(timenav::RobotId{51})->current_edge_id.has_value());
     CHECK(coordinator.find_robot_state(timenav::RobotId{51})->current_node_id.value() == fixture.node_b_id);
     CHECK(coordinator.find_robot_state(timenav::RobotId{51})->current_edge_id.value() == fixture.edge_bc_id);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{51})->next_route_step_index == 1);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{51})->progress_state ==
+          timenav::RobotProgressState::FollowingRoute);
     CHECK(coordinator.find_robot_state(timenav::RobotId{51})->updated_at_tick == 42);
+    CHECK(coordinator.update_robot_progress(timenav::RobotId{51}, fixture.node_c_id, dp::nullopt, 43));
+    CHECK(coordinator.find_robot_state(timenav::RobotId{51})->progress_state == timenav::RobotProgressState::Idle);
     CHECK_FALSE(coordinator.update_robot_progress(timenav::RobotId{99}, fixture.node_a_id, fixture.edge_ab_id, 1));
 }
 

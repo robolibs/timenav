@@ -296,6 +296,23 @@ namespace timenav {
 
             state->current_node_id = current_node_id;
             state->current_edge_id = current_edge_id;
+            if (state->route_plan.has_value() && current_node_id.has_value()) {
+                const auto node_it = std::find(state->route_plan->traversed_node_ids.begin(),
+                                               state->route_plan->traversed_node_ids.end(), current_node_id.value());
+                if (node_it != state->route_plan->traversed_node_ids.end()) {
+                    state->next_route_step_index =
+                        static_cast<dp::u64>(std::distance(state->route_plan->traversed_node_ids.begin(), node_it));
+                    state->progress_state =
+                        state->next_route_step_index + 1 >= state->route_plan->traversed_node_ids.size()
+                            ? RobotProgressState::Idle
+                            : RobotProgressState::FollowingRoute;
+                    state->hold_reason = dp::nullopt;
+                }
+            } else if (current_edge_id.has_value()) {
+                state->progress_state = RobotProgressState::FollowingRoute;
+            } else {
+                state->progress_state = RobotProgressState::Waiting;
+            }
             state->updated_at_tick = updated_at_tick;
             return true;
         }
