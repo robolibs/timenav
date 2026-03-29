@@ -485,3 +485,45 @@ TEST_CASE("workspace index reports validation issues for ids memberships and ref
     CHECK(found_broken_membership);
     CHECK(found_invalid_reference);
 }
+
+TEST_CASE("workspace index milestone two regression covers memberships hierarchy and coordinate access") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+    const auto &grandchild = child_a.children().at(0);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto root_nodes = index.nodes_in_zone(root.id());
+    const auto child_a_nodes = index.nodes_in_zone(child_a.id());
+    const auto child_b_nodes = index.nodes_in_zone(child_b.id());
+    const auto node_b_zones = index.zones_of_node(fixture.node_b_id);
+    const auto edge_bc_zones = index.zones_of_edge(fixture.edge_bc_id);
+    const auto root_descendants = index.descendant_zones(root.id());
+    const auto grandchild_ancestors = index.ancestor_zones(grandchild.id());
+
+    REQUIRE(root_nodes.size() == 3);
+    REQUIRE(child_a_nodes.size() == 2);
+    REQUIRE(child_b_nodes.size() == 1);
+    REQUIRE(node_b_zones.size() == 2);
+    REQUIRE(edge_bc_zones.size() == 3);
+    REQUIRE(root_descendants.size() == 3);
+    REQUIRE(grandchild_ancestors.size() == 2);
+
+    CHECK(root_nodes[1]->id == fixture.node_b_id);
+    CHECK(child_a_nodes[1]->id == fixture.node_b_id);
+    CHECK(child_b_nodes[0]->id == fixture.node_c_id);
+    CHECK(node_b_zones[1]->id() == child_a.id());
+    CHECK(edge_bc_zones[2]->id() == child_b.id());
+    CHECK(root_descendants[1]->id() == grandchild.id());
+    CHECK(grandchild_ancestors[1]->id() == root.id());
+
+    const auto node_b_global = index.local_to_global(index.node(fixture.node_b_id)->position);
+    REQUIRE(node_b_global.is_ok());
+    const auto node_b_round_trip = index.global_to_local(node_b_global.value());
+    REQUIRE(node_b_round_trip.is_ok());
+    CHECK(node_b_round_trip.value().x == doctest::Approx(30.0).epsilon(1e-6));
+    CHECK(node_b_round_trip.value().y == doctest::Approx(20.0).epsilon(1e-6));
+    CHECK(node_b_round_trip.value().z == doctest::Approx(0.0).epsilon(1e-6));
+}
