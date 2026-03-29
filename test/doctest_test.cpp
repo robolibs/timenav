@@ -634,6 +634,53 @@ TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
     CHECK(response.description.value() == "accepted");
 }
 
+TEST_CASE("vda 3.0.0 compatibility regression covers enriched transport mappings") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState robot_state{};
+    robot_state.robot_id = timenav::RobotId{188};
+    robot_state.route_plan = route_plan.value();
+    robot_state.current_node_id = fixture.node_b_id;
+    robot_state.current_edge_id = fixture.edge_bc_id;
+    robot_state.active_lease_ids.push_back(timenav::LeaseId{701});
+    robot_state.hold_reason = "yielding";
+
+    timenav::ClaimManager claim_manager{};
+    const timenav::vda::Adapter adapter{};
+
+    timenav::vda::Factsheet factsheet{};
+    factsheet.manufacturer = "robolibs";
+    factsheet.serial_number = "tn-188";
+    factsheet.software_version = "0.0.1";
+
+    timenav::vda::InstantAction action{};
+    action.action_id = "cancel-order";
+    action.action_type = "cancelOrder";
+
+    const auto order = adapter.order_from_route(index, route_plan.value());
+    const auto state = adapter.state_from_robot(robot_state, claim_manager);
+    const auto connection = adapter.connection_from_factsheet(factsheet);
+    const auto response =
+        adapter.response_for_action(action, timenav::vda::ActionStatus::Finished, dp::String{"done"}, dp::String{"ok"});
+
+    REQUIRE(order.nodes.front().zone_id.has_value());
+    REQUIRE(order.edges.front().zone_id.has_value());
+    CHECK(state.connection_state == timenav::vda::ConnectionState::Online);
+    CHECK(state.action_states.size() == 2);
+    CHECK(connection.status == timenav::vda::ConnectionStatus::Online);
+    CHECK(response.status == timenav::vda::ActionStatus::Finished);
+    REQUIRE(response.result_code.has_value());
+    CHECK(response.result_code.value() == "ok");
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
