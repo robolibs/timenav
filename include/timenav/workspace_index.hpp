@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 
 #include <concord/concord.hpp>
@@ -163,6 +164,32 @@ namespace timenav {
 
             const auto enu = concord::frame::to_enu(*reference, concord::earth::WGS{global_point});
             return dp::Result<dp::Point>::ok(enu.point());
+        }
+        [[nodiscard]] dp::Optional<dp::String> zone_property(const zoneout::UUID &zone_id, std::string_view key) const {
+            const auto *zone_data = zone(zone_id);
+            if (zone_data == nullptr) {
+                return dp::nullopt;
+            }
+
+            const auto property_it = zone_data->properties().find(std::string(key));
+            if (property_it == zone_data->properties().end()) {
+                return dp::nullopt;
+            }
+
+            return dp::String{property_it->second};
+        }
+        [[nodiscard]] dp::Optional<dp::String> edge_property(const zoneout::UUID &edge_id, std::string_view key) const {
+            const auto *edge_data = edge(edge_id);
+            if (edge_data == nullptr) {
+                return dp::nullopt;
+            }
+
+            const auto property_it = edge_data->properties.find(std::string(key));
+            if (property_it == edge_data->properties.end()) {
+                return dp::nullopt;
+            }
+
+            return dp::String{property_it->second};
         }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {

@@ -29,6 +29,7 @@ namespace {
                         .with_type("workspace")
                         .with_boundary(rectangle(0.0, 0.0, 100.0, 100.0))
                         .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                        .with_property("traffic.mode", "shared")
                         .build();
 
         auto child_a = zoneout::ZoneBuilder()
@@ -36,6 +37,7 @@ namespace {
                            .with_type("field")
                            .with_boundary(rectangle(10.0, 10.0, 40.0, 40.0))
                            .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                           .with_property("traffic.speed_limit", "1.2")
                            .build();
 
         auto child_b = zoneout::ZoneBuilder()
@@ -73,8 +75,10 @@ namespace {
         const auto node_c_vertex =
             fixture.workspace.add_node(zoneout::NodeData{fixture.node_c_id, dp::Point{70.0, 20.0, 0.0}});
 
-        fixture.workspace.add_edge(node_a_vertex, node_b_vertex, zoneout::EdgeData{fixture.edge_ab_id});
-        fixture.workspace.add_edge(node_b_vertex, node_c_vertex, zoneout::EdgeData{fixture.edge_bc_id});
+        fixture.workspace.add_edge(node_a_vertex, node_b_vertex,
+                                   zoneout::EdgeData{fixture.edge_ab_id, {{"traffic.priority", "high"}}});
+        fixture.workspace.add_edge(node_b_vertex, node_c_vertex,
+                                   zoneout::EdgeData{fixture.edge_bc_id, {{"traffic.priority", "yield"}}});
 
         return fixture;
     }
@@ -410,4 +414,24 @@ TEST_CASE("workspace index converts local and global coordinates with concord") 
     CHECK(round_trip_local.value().x == doctest::Approx(5.0).epsilon(1e-6));
     CHECK(round_trip_local.value().y == doctest::Approx(7.5).epsilon(1e-6));
     CHECK(round_trip_local.value().z == doctest::Approx(1.0).epsilon(1e-6));
+}
+
+TEST_CASE("workspace index reads zone and edge properties") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    REQUIRE(index.zone_property(root.id(), "traffic.mode").has_value());
+    CHECK(index.zone_property(root.id(), "traffic.mode").value() == "shared");
+    REQUIRE(index.zone_property(child_a.id(), "traffic.speed_limit").has_value());
+    CHECK(index.zone_property(child_a.id(), "traffic.speed_limit").value() == "1.2");
+    CHECK_FALSE(index.zone_property(child_a.id(), "traffic.unknown").has_value());
+
+    REQUIRE(index.edge_property(fixture.edge_ab_id, "traffic.priority").has_value());
+    CHECK(index.edge_property(fixture.edge_ab_id, "traffic.priority").value() == "high");
+    REQUIRE(index.edge_property(fixture.edge_bc_id, "traffic.priority").has_value());
+    CHECK(index.edge_property(fixture.edge_bc_id, "traffic.priority").value() == "yield");
+    CHECK_FALSE(index.edge_property(fixture.edge_bc_id, "traffic.unknown").has_value());
 }
