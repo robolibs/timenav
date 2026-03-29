@@ -321,6 +321,30 @@ TEST_CASE("coordinator scaffold can be default constructed or bound to an index"
     CHECK(coordinator.claim_manager().index() == &index);
 }
 
+TEST_CASE("coordinator registers and updates robot state") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{11};
+    state.mission_id = timenav::MissionId{21};
+    state.current_node_id = fixture.node_a_id;
+    coordinator.register_robot(state);
+
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{11}) != nullptr);
+    CHECK(coordinator.robot_count() == 1);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{11})->mission_id == timenav::MissionId{21});
+
+    state.current_node_id = fixture.node_b_id;
+    coordinator.register_robot(state);
+
+    CHECK(coordinator.robot_count() == 1);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{11})->current_node_id.has_value());
+    CHECK(coordinator.find_robot_state(timenav::RobotId{11})->current_node_id.value() == fixture.node_b_id);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{99}) == nullptr);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
