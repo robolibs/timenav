@@ -684,12 +684,14 @@ TEST_CASE("coordinator derives rolling horizon claim requests from registered ro
     state.mission_id = timenav::MissionId{41};
     state.route_plan = route_plan.value();
     state.horizon = 1;
+    state.current_node_id = fixture.node_b_id;
+    state.updated_at_tick = 7;
     coordinator.register_robot(state);
 
     const auto request = coordinator.claim_request_for_robot(timenav::RobotId{31}, timenav::ClaimId{121});
-    const auto expected_zone_targets = std::min<dp::u64>(route_plan.value().traversed_zone_ids.size(), state.horizon + 1);
-    const auto expected_edge_targets = std::min<dp::u64>(route_plan.value().traversed_edge_ids.size(), state.horizon);
-    const auto expected_node_targets = std::min<dp::u64>(route_plan.value().traversed_node_ids.size(), state.horizon + 1);
+    const auto expected_zone_targets = std::min<dp::u64>(route_plan.value().traversed_zone_ids.size() - 1, state.horizon + 1);
+    const auto expected_edge_targets = std::min<dp::u64>(route_plan.value().traversed_edge_ids.size() - 1, state.horizon);
+    const auto expected_node_targets = std::min<dp::u64>(route_plan.value().traversed_node_ids.size() - 1, state.horizon + 1);
 
     CHECK(request.id == timenav::ClaimId{121});
     CHECK(request.robot_id == timenav::RobotId{31});
@@ -699,6 +701,11 @@ TEST_CASE("coordinator derives rolling horizon claim requests from registered ro
     CHECK(request.targets[expected_zone_targets].kind == timenav::ClaimTargetKind::Edge);
     CHECK(request.targets[expected_zone_targets + expected_edge_targets].kind == timenav::ClaimTargetKind::Node);
     CHECK(request.targets.back().kind == timenav::ClaimTargetKind::Node);
+    REQUIRE(request.requested_at_tick.has_value());
+    CHECK(request.requested_at_tick.value() == 7);
+    REQUIRE(request.window.start_tick.has_value());
+    REQUIRE(request.window.end_tick.has_value());
+    CHECK(request.window.start_tick.value() == 7);
 }
 
 TEST_CASE("coordinator updates robot progress by node and edge") {
