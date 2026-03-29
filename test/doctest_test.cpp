@@ -1150,6 +1150,28 @@ TEST_CASE("planner penalties prefer lower-risk routes over lower raw weight rout
     CHECK(route_nodes[2] == fixture.node_d_id);
 }
 
+TEST_CASE("planner penalties include priority capacity and clearance pressure") {
+    auto fixture = make_penalized_route_workspace();
+    const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+    const auto edge_cd = fixture.workspace.find_edge(fixture.edge_cd_id);
+    REQUIRE(edge_ab.has_value());
+    REQUIRE(edge_cd.has_value());
+    fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.priority"] = "1.0";
+    fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.capacity"] = "1";
+    fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.clearance_width"] = "0.5";
+    fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.clearance_height"] = "1.0";
+    fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.priority"] = "9.0";
+    fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.capacity"] = "4";
+    fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.clearance_width"] = "2.0";
+    fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.clearance_height"] = "2.0";
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const auto constrained_penalty = timenav::edge_traversal_penalty(index, fixture.edge_ab_id);
+    const auto roomy_penalty = timenav::edge_traversal_penalty(index, fixture.edge_cd_id);
+
+    CHECK(constrained_penalty > roomy_penalty);
+}
+
 TEST_CASE("route extraction builds traversed nodes edges zones and steps") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

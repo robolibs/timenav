@@ -1315,7 +1315,7 @@ Still missing / still weak:
 - [x] Slice 4.4: add route reconstruction from predecessor state
 - [x] Slice 4.5: add route cost accumulation from edge weight
 - [x] Slice 4.6: add edge blocking from hard zone/edge policy
-- [ ] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
+- [x] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
 - [ ] Slice 4.8: add extraction of traversed nodes / edges / zones from a route
 - [ ] Slice 4.9: add failure reporting for unreachable routes and policy-blocked routes
 - [ ] Slice 4.10: add planner tests on small workspace fixtures with blocked and allowed alternatives

@@ -141,6 +141,18 @@ namespace timenav {
         if (semantics.speed_limit.has_value() && semantics.speed_limit.value() > 0.0) {
             penalty += 1.0 / semantics.speed_limit.value();
         }
+        if (semantics.priority.has_value()) {
+            penalty += std::max(0.0, 10.0 - semantics.priority.value()) * 0.1;
+        }
+        if (semantics.capacity.has_value() && semantics.capacity.value() > 0) {
+            penalty += 1.0 / static_cast<dp::f64>(semantics.capacity.value());
+        }
+        if (semantics.clearance_width.has_value() && semantics.clearance_width.value() > 0.0) {
+            penalty += 1.0 / semantics.clearance_width.value();
+        }
+        if (semantics.clearance_height.has_value() && semantics.clearance_height.value() > 0.0) {
+            penalty += 1.0 / semantics.clearance_height.value();
+        }
 
         for (const auto &zone_policy : zone_policies) {
             if (zone_policy.requires_claim || zone_policy.blocks_entry_without_grant ||
