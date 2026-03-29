@@ -1,6 +1,47 @@
 #include <doctest/doctest.h>
 #include <timenav/timenav.hpp>
 
+namespace {
+
+    dp::Polygon rectangle(double min_x, double min_y, double max_x, double max_y) {
+        dp::Polygon polygon;
+        polygon.vertices.push_back(dp::Point{min_x, min_y, 0.0});
+        polygon.vertices.push_back(dp::Point{max_x, min_y, 0.0});
+        polygon.vertices.push_back(dp::Point{max_x, max_y, 0.0});
+        polygon.vertices.push_back(dp::Point{min_x, max_y, 0.0});
+        return polygon;
+    }
+
+    zoneout::Workspace make_test_workspace() {
+        auto root = zoneout::ZoneBuilder()
+                        .with_name("root")
+                        .with_type("workspace")
+                        .with_boundary(rectangle(0.0, 0.0, 100.0, 100.0))
+                        .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                        .build();
+
+        auto child_a = zoneout::ZoneBuilder()
+                           .with_name("child-a")
+                           .with_type("field")
+                           .with_boundary(rectangle(10.0, 10.0, 40.0, 40.0))
+                           .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                           .build();
+
+        auto child_b = zoneout::ZoneBuilder()
+                           .with_name("child-b")
+                           .with_type("field")
+                           .with_boundary(rectangle(50.0, 10.0, 90.0, 40.0))
+                           .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                           .build();
+
+        root.add_child(std::move(child_a));
+        root.add_child(std::move(child_b));
+
+        return zoneout::Workspace(std::move(root));
+    }
+
+} // namespace
+
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
 
 TEST_CASE("timenav strong id wrappers stay distinct") {
@@ -29,4 +70,28 @@ TEST_CASE("workspace index scaffold can be default constructed") {
     const timenav::WorkspaceIndex index{};
 
     CHECK(index.empty());
+}
+
+TEST_CASE("workspace index can borrow or own a workspace and expose the root zone") {
+    auto workspace = make_test_workspace();
+    const auto root_id = workspace.root_zone().id();
+
+    const timenav::WorkspaceIndex borrowed_index{workspace};
+    CHECK(borrowed_index.has_workspace());
+    CHECK_FALSE(borrowed_index.owns_workspace());
+    REQUIRE(borrowed_index.workspace() != nullptr);
+    REQUIRE(borrowed_index.root_zone() != nullptr);
+    CHECK(borrowed_index.root_zone()->id() == root_id);
+    CHECK(borrowed_index.root_zone_id().value() == root_id);
+
+    auto owned_workspace = std::make_shared<zoneout::Workspace>(make_test_workspace());
+    const auto owned_root_id = owned_workspace->root_zone().id();
+
+    const timenav::WorkspaceIndex owned_index{owned_workspace};
+    CHECK(owned_index.has_workspace());
+    CHECK(owned_index.owns_workspace());
+    REQUIRE(owned_index.workspace() != nullptr);
+    REQUIRE(owned_index.root_zone() != nullptr);
+    CHECK(owned_index.root_zone()->id() == owned_root_id);
+    CHECK(owned_index.root_zone_id().value() == owned_root_id);
 }
