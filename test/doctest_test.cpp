@@ -241,6 +241,8 @@ TEST_CASE("route types expose typed defaults") {
     const timenav::RouteSearchState search{};
 
     CHECK_FALSE(step.incoming_edge_id.has_value());
+    CHECK(step.step_cost == doctest::Approx(0.0));
+    CHECK(step.cumulative_cost == doctest::Approx(0.0));
     CHECK(plan.steps.empty());
     CHECK(plan.traversed_node_ids.empty());
     CHECK(plan.traversed_edge_ids.empty());
@@ -1091,10 +1093,16 @@ TEST_CASE("route extraction builds traversed nodes edges zones and steps") {
     CHECK(route_plan.value().goal_node_id == fixture.node_c_id);
     REQUIRE(route_plan.value().steps.size() == 3);
     CHECK_FALSE(route_plan.value().steps[0].incoming_edge_id.has_value());
+    CHECK(route_plan.value().steps[0].step_cost == doctest::Approx(0.0));
+    CHECK(route_plan.value().steps[0].cumulative_cost == doctest::Approx(0.0));
     REQUIRE(route_plan.value().steps[1].incoming_edge_id.has_value());
     CHECK(route_plan.value().steps[1].incoming_edge_id.value() == fixture.edge_ab_id);
+    CHECK(route_plan.value().steps[1].step_cost == doctest::Approx(1.0));
+    CHECK(route_plan.value().steps[1].cumulative_cost == doctest::Approx(1.0));
     REQUIRE(route_plan.value().steps[2].incoming_edge_id.has_value());
     CHECK(route_plan.value().steps[2].incoming_edge_id.value() == fixture.edge_bc_id);
+    CHECK(route_plan.value().steps[2].step_cost == doctest::Approx(1.0));
+    CHECK(route_plan.value().steps[2].cumulative_cost == doctest::Approx(2.0));
     CHECK(route_plan.value().traversed_node_ids == route_nodes);
     CHECK(route_plan.value().traversed_edge_ids == traversed_edges.value());
     CHECK(route_plan.value().traversed_zone_ids.size() >= 1);

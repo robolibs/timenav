@@ -16,6 +16,8 @@ namespace timenav {
     struct RouteStep {
         zoneout::UUID node_id;
         dp::Optional<zoneout::UUID> incoming_edge_id;
+        dp::f64 step_cost = 0.0;
+        dp::f64 cumulative_cost = 0.0;
     };
 
     struct RoutePlan {
@@ -447,6 +449,15 @@ namespace timenav {
             step.node_id = route_nodes[i];
             if (i > 0) {
                 step.incoming_edge_id = plan.traversed_edge_ids[i - 1];
+                const auto partial_route = dp::Vector<zoneout::UUID>(route_nodes.begin() + static_cast<dp::i64>(i - 1),
+                                                                     route_nodes.begin() + static_cast<dp::i64>(i + 1));
+                const auto step_cost = accumulate_route_cost(index, partial_route);
+                if (step_cost.is_err()) {
+                    return dp::Result<RoutePlan>::err(step_cost.error());
+                }
+                step.step_cost = step_cost.value();
+                step.cumulative_cost =
+                    plan.steps.empty() ? step.step_cost : plan.steps.back().cumulative_cost + step.step_cost;
             }
             plan.steps.push_back(step);
         }

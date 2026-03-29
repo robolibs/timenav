@@ -1309,7 +1309,7 @@ Still missing / still weak:
 - [ ] improve diagnostics for blocked vs unreachable routes
 - [ ] add richer fixtures with overlapping zones, lane rules, and planner tradeoffs
 
-- [ ] Slice 4.1: add `route.hpp` with route step and route plan types
+- [x] Slice 4.1: add `route.hpp` with route step and route plan types
 - [ ] Slice 4.2: add graph traversal adapter over the `zoneout` graph
 - [ ] Slice 4.3: add basic shortest-path search without traffic constraints
 - [ ] Slice 4.4: add route reconstruction from predecessor state
