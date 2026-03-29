@@ -459,8 +459,10 @@ TEST_CASE("vda instant action types expose typed defaults") {
     CHECK(action.action_id.empty());
     CHECK(action.action_type.empty());
     CHECK(action.blocking_type == timenav::vda::ActionBlockingType::None);
+    CHECK_FALSE(action.description.has_value());
     CHECK(action.parameters.empty());
     CHECK(actions.header_id.empty());
+    CHECK(actions.header_version == 0);
     CHECK(actions.actions.empty());
 }
 
