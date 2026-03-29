@@ -357,6 +357,33 @@ TEST_CASE("zone claim compatibility distinguishes overlapping exclusive and shar
     CHECK(timenav::ClaimManager::zone_claims_compatible(exclusive_request, disjoint_request));
 }
 
+TEST_CASE("edge and node claim compatibility detect overlapping exclusive targets") {
+    const auto shared_node = zoneout::UUID("50505050-5050-4050-8050-505050505050");
+    const auto shared_edge = zoneout::UUID("60606060-6060-4060-8060-606060606060");
+
+    timenav::ClaimRequest lhs{};
+    lhs.access_mode = timenav::ClaimAccessMode::Exclusive;
+    lhs.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, shared_node});
+    lhs.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, shared_edge});
+
+    timenav::ClaimRequest rhs{};
+    rhs.access_mode = timenav::ClaimAccessMode::Shared;
+    rhs.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, shared_node});
+    rhs.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, shared_edge});
+
+    timenav::ClaimRequest disjoint{};
+    disjoint.access_mode = timenav::ClaimAccessMode::Exclusive;
+    disjoint.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Node, zoneout::UUID("70707070-7070-4070-8070-707070707070")});
+    disjoint.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, zoneout::UUID("80808080-8080-4080-8080-808080808080")});
+
+    CHECK_FALSE(timenav::ClaimManager::node_claims_compatible(lhs, rhs));
+    CHECK_FALSE(timenav::ClaimManager::edge_claims_compatible(lhs, rhs));
+    CHECK_FALSE(timenav::ClaimManager::claims_compatible(lhs, rhs));
+    CHECK(timenav::ClaimManager::claims_compatible(lhs, disjoint));
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

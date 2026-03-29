@@ -41,13 +41,32 @@ namespace timenav {
         }
 
         [[nodiscard]] static bool zone_claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
+            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Zone);
+        }
+
+        [[nodiscard]] static bool node_claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
+            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Node);
+        }
+
+        [[nodiscard]] static bool edge_claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
+            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Edge);
+        }
+
+        [[nodiscard]] static bool claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
+            return zone_claims_compatible(lhs, rhs) && node_claims_compatible(lhs, rhs) &&
+                   edge_claims_compatible(lhs, rhs);
+        }
+
+      private:
+        [[nodiscard]] static bool target_kind_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs,
+                                                         ClaimTargetKind kind) noexcept {
             for (const auto &lhs_target : lhs.targets) {
-                if (lhs_target.kind != ClaimTargetKind::Zone) {
+                if (lhs_target.kind != kind) {
                     continue;
                 }
 
                 for (const auto &rhs_target : rhs.targets) {
-                    if (rhs_target.kind != ClaimTargetKind::Zone || lhs_target.resource_id != rhs_target.resource_id) {
+                    if (rhs_target.kind != kind || lhs_target.resource_id != rhs_target.resource_id) {
                         continue;
                     }
 
@@ -60,8 +79,6 @@ namespace timenav {
 
             return true;
         }
-
-      private:
         const WorkspaceIndex *index_ = nullptr;
         dp::Vector<ClaimRequest> active_requests_{};
         dp::Vector<Lease> active_leases_{};
