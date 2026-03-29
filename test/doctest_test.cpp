@@ -83,6 +83,16 @@ namespace {
         return fixture;
     }
 
+    TestWorkspace make_directional_workspace() {
+        auto fixture = make_test_workspace();
+        const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+        if (!edge_ab.has_value()) {
+            throw std::runtime_error("expected edge_ab in directional fixture");
+        }
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.preferred_direction"] = "forward";
+        return fixture;
+    }
+
     zoneout::Workspace make_invalid_workspace() {
         auto fixture = make_test_workspace();
         fixture.workspace.clear_ref();
@@ -964,10 +974,26 @@ TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
 
     const auto node_b_neighbors = adapter.neighbors(fixture.node_b_id);
     REQUIRE(node_b_neighbors.size() == 2);
-    CHECK(node_b_neighbors[0].node_id == fixture.node_a_id);
-    CHECK(node_b_neighbors[1].node_id == fixture.node_c_id);
+    const bool has_node_a = node_b_neighbors[0].node_id == fixture.node_a_id || node_b_neighbors[1].node_id == fixture.node_a_id;
+    const bool has_node_c = node_b_neighbors[0].node_id == fixture.node_c_id || node_b_neighbors[1].node_id == fixture.node_c_id;
+    CHECK(has_node_a);
+    CHECK(has_node_c);
 
     CHECK(adapter.neighbors(zoneout::UUID("12121212-1212-4121-8121-121212121212")).empty());
+}
+
+TEST_CASE("graph traversal adapter respects forward and reverse direction hints") {
+    const auto fixture = make_directional_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const timenav::GraphTraversalAdapter adapter{index};
+
+    const auto node_a_neighbors = adapter.neighbors(fixture.node_a_id);
+    const auto node_b_neighbors = adapter.neighbors(fixture.node_b_id);
+
+    REQUIRE(node_a_neighbors.size() == 1);
+    CHECK(node_a_neighbors[0].node_id == fixture.node_b_id);
+    CHECK(node_b_neighbors.size() == 1);
+    CHECK(node_b_neighbors[0].node_id == fixture.node_c_id);
 }
 
 TEST_CASE("shortest path search finds a basic route without traffic constraints") {

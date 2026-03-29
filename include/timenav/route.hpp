@@ -57,6 +57,26 @@ namespace timenav {
         dp::f64 weight = 0.0;
     };
 
+    inline bool allows_traversal_from_node(const zoneout::EdgeData &edge_data, bool from_source) {
+        const auto semantics = parse_edge_traffic_semantics(edge_data.properties);
+        if (!semantics.preferred_direction.has_value()) {
+            return true;
+        }
+
+        const auto direction = std::string(semantics.preferred_direction.value().c_str());
+        if (direction == "forward" || direction == "source_to_target") {
+            return from_source || semantics.reversible.value_or(false);
+        }
+        if (direction == "reverse" || direction == "target_to_source") {
+            return !from_source || semantics.reversible.value_or(false);
+        }
+        if (direction == "bidirectional") {
+            return true;
+        }
+
+        return true;
+    }
+
     inline bool is_edge_hard_blocked(const WorkspaceIndex &index, const zoneout::UUID &edge_id) {
         const auto *edge_data = index.edge(edge_id);
         if (edge_data == nullptr) {
@@ -132,13 +152,23 @@ namespace timenav {
                 return result;
             }
 
-            for (const auto edge_id : workspace->graph().out_edges(*vertex_id)) {
-                const auto other_vertex = workspace->graph().source(edge_id) == *vertex_id
-                                              ? workspace->graph().target(edge_id)
-                                              : workspace->graph().source(edge_id);
+            for (const auto &edge : workspace->graph().edges()) {
+                const auto source = workspace->graph().source(edge.id);
+                const auto target = workspace->graph().target(edge.id);
+                const auto touches_vertex = source == *vertex_id || target == *vertex_id;
+                if (!touches_vertex) {
+                    continue;
+                }
+
+                const bool from_source = source == *vertex_id;
+                if (!allows_traversal_from_node(workspace->graph().edge_property(edge.id), from_source)) {
+                    continue;
+                }
+
+                const auto other_vertex = from_source ? target : source;
                 result.push_back(TraversalNeighbor{workspace->graph()[other_vertex].id,
-                                                   workspace->graph().edge_property(edge_id).id,
-                                                   workspace->graph().get_weight(edge_id)});
+                                                   workspace->graph().edge_property(edge.id).id,
+                                                   workspace->graph().get_weight(edge.id)});
             }
 
             return result;
