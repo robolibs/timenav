@@ -1076,6 +1076,24 @@ TEST_CASE("route cost accumulation sums traversed edge weights") {
     CHECK(route_cost.value() == doctest::Approx(4.0));
 }
 
+TEST_CASE("route cost accumulation can include planner penalties") {
+    const auto fixture = make_penalized_route_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_d_id);
+
+    const auto graph_cost = timenav::accumulate_route_cost(index, route_nodes, timenav::RouteCostModel::GraphWeight);
+    const auto penalized_cost =
+        timenav::accumulate_route_cost(index, route_nodes, timenav::RouteCostModel::Penalized);
+
+    REQUIRE(graph_cost.is_ok());
+    REQUIRE(penalized_cost.is_ok());
+    CHECK(graph_cost.value() == doctest::Approx(2.0));
+    CHECK(penalized_cost.value() > graph_cost.value());
+}
+
 TEST_CASE("edge blocking excludes routes through blocked zone or edge policy") {
     auto fixture = make_route_choice_workspace();
     const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);

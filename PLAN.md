@@ -1313,7 +1313,7 @@ Still missing / still weak:
 - [x] Slice 4.2: add graph traversal adapter over the `zoneout` graph
 - [x] Slice 4.3: add basic shortest-path search without traffic constraints
 - [x] Slice 4.4: add route reconstruction from predecessor state
-- [ ] Slice 4.5: add route cost accumulation from edge weight
+- [x] Slice 4.5: add route cost accumulation from edge weight
 - [ ] Slice 4.6: add edge blocking from hard zone/edge policy
 - [ ] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
 - [ ] Slice 4.8: add extraction of traversed nodes / edges / zones from a route

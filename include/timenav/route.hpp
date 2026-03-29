@@ -57,8 +57,13 @@ namespace timenav {
         dp::f64 weight = 0.0;
     };
 
+    enum class RouteCostModel { GraphWeight, Penalized };
+
     inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
                                                      const dp::Vector<zoneout::UUID> &route_nodes);
+    inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
+                                                     const dp::Vector<zoneout::UUID> &route_nodes,
+                                                     RouteCostModel cost_model);
 
     inline bool allows_traversal_from_node(const zoneout::EdgeData &edge_data, bool from_source) {
         const auto semantics = parse_edge_traffic_semantics(edge_data.properties);
@@ -424,6 +429,12 @@ namespace timenav {
 
     inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
                                                      const dp::Vector<zoneout::UUID> &route_nodes) {
+        return accumulate_route_cost(index, route_nodes, RouteCostModel::GraphWeight);
+    }
+
+    inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
+                                                     const dp::Vector<zoneout::UUID> &route_nodes,
+                                                     RouteCostModel cost_model) {
         if (route_nodes.empty()) {
             return dp::Result<dp::f64>::ok(0.0);
         }
@@ -452,6 +463,9 @@ namespace timenav {
             }
 
             total_cost += workspace->graph().get_weight(*edge_id);
+            if (cost_model == RouteCostModel::Penalized) {
+                total_cost += edge_traversal_penalty(index, workspace->graph().edge_property(*edge_id).id);
+            }
         }
 
         return dp::Result<dp::f64>::ok(total_cost);
