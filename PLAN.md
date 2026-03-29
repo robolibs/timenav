@@ -1335,7 +1335,7 @@ Still missing / still weak:
 - [ ] connect lease behavior more tightly to coordinator/scheduler expectations
 
 - [x] Slice 5.1: add `claim.hpp` with request, lease, and target types
-- [ ] Slice 5.2: add `claim_manager.hpp` scaffold
+- [x] Slice 5.2: add `claim_manager.hpp` scaffold
 - [ ] Slice 5.3: add storage for active claim requests
 - [ ] Slice 5.4: add storage for granted leases
 - [ ] Slice 5.5: add compatibility matrix for zone claims

@@ -298,6 +298,7 @@ TEST_CASE("claim manager scaffold can be default constructed or bound to an inde
     const timenav::ClaimManager empty_manager{};
     CHECK(empty_manager.empty());
     CHECK(empty_manager.index() == nullptr);
+    CHECK_FALSE(empty_manager.has_index());
     CHECK(empty_manager.request_count() == 0);
     CHECK(empty_manager.lease_count() == 0);
 
@@ -307,8 +308,35 @@ TEST_CASE("claim manager scaffold can be default constructed or bound to an inde
 
     CHECK(indexed_manager.empty());
     CHECK(indexed_manager.index() == &index);
+    CHECK(indexed_manager.has_index());
     CHECK(indexed_manager.request_count() == 0);
     CHECK(indexed_manager.lease_count() == 0);
+}
+
+TEST_CASE("claim manager scaffold supports rebinding queries and reset") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    timenav::ClaimManager manager{};
+    CHECK_FALSE(manager.has_index());
+    manager.bind_index(index);
+    CHECK(manager.index() == &index);
+    CHECK(manager.has_index());
+
+    timenav::ClaimRequest request{};
+    request.id = timenav::ClaimId{501};
+    manager.add_request(request);
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{601};
+    manager.add_lease(lease);
+
+    CHECK(manager.has_request(timenav::ClaimId{501}));
+    CHECK(manager.has_lease(timenav::LeaseId{601}));
+    manager.clear();
+    CHECK(manager.empty());
+    CHECK_FALSE(manager.has_request(timenav::ClaimId{501}));
+    CHECK_FALSE(manager.has_lease(timenav::LeaseId{601}));
 }
 
 TEST_CASE("robot state exposes typed defaults") {

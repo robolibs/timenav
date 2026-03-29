@@ -14,10 +14,16 @@ namespace timenav {
 
         [[nodiscard]] bool empty() const noexcept { return request_count() == 0 && lease_count() == 0; }
         [[nodiscard]] const WorkspaceIndex *index() const noexcept { return index_; }
+        [[nodiscard]] bool has_index() const noexcept { return index_ != nullptr; }
         [[nodiscard]] dp::u64 request_count() const noexcept { return active_requests_.size(); }
         [[nodiscard]] dp::u64 lease_count() const noexcept { return active_leases_.size(); }
         [[nodiscard]] const dp::Vector<ClaimRequest> &requests() const noexcept { return active_requests_; }
         [[nodiscard]] const dp::Vector<Lease> &leases() const noexcept { return active_leases_; }
+        void bind_index(const WorkspaceIndex &index) noexcept { index_ = &index; }
+        void clear() {
+            active_requests_.clear();
+            active_leases_.clear();
+        }
 
         void add_request(const ClaimRequest &request) { active_requests_.push_back(request); }
         void add_lease(const Lease &lease) { active_leases_.push_back(lease); }
@@ -51,6 +57,7 @@ namespace timenav {
 
             return nullptr;
         }
+        [[nodiscard]] bool has_request(ClaimId id) const noexcept { return find_request(id) != nullptr; }
 
         [[nodiscard]] const Lease *find_lease(LeaseId id) const noexcept {
             for (const auto &lease : active_leases_) {
@@ -61,6 +68,7 @@ namespace timenav {
 
             return nullptr;
         }
+        [[nodiscard]] bool has_lease(LeaseId id) const noexcept { return find_lease(id) != nullptr; }
 
         [[nodiscard]] static bool zone_claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
             return target_kind_compatible(lhs, rhs, ClaimTargetKind::Zone);
@@ -93,8 +101,11 @@ namespace timenav {
                 }
 
                 if (!claims_compatible(request, active_request)) {
-                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with active request"},
-                                           active_request.id, dp::nullopt};
+                    return ClaimEvaluation{ClaimDecision::Deny,
+                                           dp::String{"conflicts with active request"},
+                                           active_request.id,
+                                           dp::nullopt,
+                                           {}};
                 }
             }
 
@@ -104,13 +115,19 @@ namespace timenav {
                 }
 
                 if (!claims_compatible(request, active_lease)) {
-                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with granted lease"}, dp::nullopt,
-                                           active_lease.id};
+                    return ClaimEvaluation{ClaimDecision::Deny,
+                                           dp::String{"conflicts with granted lease"},
+                                           dp::nullopt,
+                                           active_lease.id,
+                                           {}};
                 }
             }
 
-            return ClaimEvaluation{ClaimDecision::Grant, dp::String{"claim is compatible with current state"},
-                                   dp::nullopt, dp::nullopt};
+            return ClaimEvaluation{ClaimDecision::Grant,
+                                   dp::String{"claim is compatible with current state"},
+                                   dp::nullopt,
+                                   dp::nullopt,
+                                   {}};
         }
 
       private:
