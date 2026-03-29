@@ -1011,6 +1011,21 @@ TEST_CASE("shortest path search finds a basic route without traffic constraints"
     CHECK(search.predecessors.at(fixture.node_c_id) == fixture.node_b_id);
 }
 
+TEST_CASE("shortest path search returns immediately when start already equals goal") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto search = timenav::shortest_path_search(index, fixture.node_a_id, fixture.node_a_id);
+    const auto route_nodes = timenav::reconstruct_route_nodes(search, fixture.node_a_id, fixture.node_a_id);
+
+    CHECK(search.found);
+    CHECK(search.distance == doctest::Approx(0.0));
+    REQUIRE(search.distances.contains(fixture.node_a_id));
+    CHECK(search.predecessors.empty());
+    REQUIRE(route_nodes.size() == 1);
+    CHECK(route_nodes[0] == fixture.node_a_id);
+}
+
 TEST_CASE("route reconstruction builds an ordered node sequence from predecessors") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

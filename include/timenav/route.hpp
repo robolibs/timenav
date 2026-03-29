@@ -191,6 +191,12 @@ namespace timenav {
         if (index.node(start_node_id) == nullptr || index.node(goal_node_id) == nullptr) {
             return state;
         }
+        if (start_node_id == goal_node_id) {
+            state.found = true;
+            state.distance = 0.0;
+            state.distances[start_node_id] = 0.0;
+            return state;
+        }
 
         GraphTraversalAdapter adapter{index};
         std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<QueueEntry>> frontier;
@@ -245,6 +251,12 @@ namespace timenav {
         if (index.node(start_node_id) == nullptr || index.node(goal_node_id) == nullptr) {
             return state;
         }
+        if (start_node_id == goal_node_id) {
+            state.found = true;
+            state.distance = 0.0;
+            state.distances[start_node_id] = 0.0;
+            return state;
+        }
 
         GraphTraversalAdapter adapter{index};
         std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<QueueEntry>> frontier;
@@ -297,6 +309,12 @@ namespace timenav {
 
         RouteSearchState state{};
         if (index.node(start_node_id) == nullptr || index.node(goal_node_id) == nullptr) {
+            return state;
+        }
+        if (start_node_id == goal_node_id) {
+            state.found = true;
+            state.distance = 0.0;
+            state.distances[start_node_id] = 0.0;
             return state;
         }
 
