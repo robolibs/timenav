@@ -51,6 +51,20 @@ namespace timenav {
             const auto it = children_.find(zone_id);
             return it == children_.end() ? dp::Vector<const zoneout::Zone *>{} : it->second;
         }
+        [[nodiscard]] dp::Vector<const zoneout::Zone *> ancestor_zones(const zoneout::UUID &zone_id) const {
+            dp::Vector<const zoneout::Zone *> ancestors;
+
+            for (auto *current = parent_zone(zone_id); current != nullptr; current = parent_zone(current->id())) {
+                ancestors.push_back(current);
+            }
+
+            return ancestors;
+        }
+        [[nodiscard]] dp::Vector<const zoneout::Zone *> descendant_zones(const zoneout::UUID &zone_id) const {
+            dp::Vector<const zoneout::Zone *> descendants;
+            collect_descendants(zone_id, descendants);
+            return descendants;
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();
@@ -60,6 +74,14 @@ namespace timenav {
         }
 
       private:
+        void collect_descendants(const zoneout::UUID &zone_id, dp::Vector<const zoneout::Zone *> &descendants) const {
+            const auto direct_children = child_zones(zone_id);
+            for (const auto *child : direct_children) {
+                descendants.push_back(child);
+                collect_descendants(child->id(), descendants);
+            }
+        }
+
         void index_zone_tree(const zoneout::Zone &zone, const zoneout::Zone *parent) {
             zones_[zone.id()] = &zone;
             if (parent != nullptr) {

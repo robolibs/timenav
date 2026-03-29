@@ -208,3 +208,34 @@ TEST_CASE("workspace index resolves parent and child zones") {
     CHECK(child_a_children[0]->id() == grandchild.id());
     CHECK(index.child_zones(child_b.id()).empty());
 }
+
+TEST_CASE("workspace index resolves ancestor and descendant zones") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+    const auto &grandchild = child_a.children().at(0);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto grandchild_ancestors = index.ancestor_zones(grandchild.id());
+    REQUIRE(grandchild_ancestors.size() == 2);
+    CHECK(grandchild_ancestors[0]->id() == child_a.id());
+    CHECK(grandchild_ancestors[1]->id() == root.id());
+
+    const auto child_a_ancestors = index.ancestor_zones(child_a.id());
+    REQUIRE(child_a_ancestors.size() == 1);
+    CHECK(child_a_ancestors[0]->id() == root.id());
+    CHECK(index.ancestor_zones(root.id()).empty());
+
+    const auto root_descendants = index.descendant_zones(root.id());
+    REQUIRE(root_descendants.size() == 3);
+    CHECK(root_descendants[0]->id() == child_a.id());
+    CHECK(root_descendants[1]->id() == grandchild.id());
+    CHECK(root_descendants[2]->id() == child_b.id());
+
+    const auto child_a_descendants = index.descendant_zones(child_a.id());
+    REQUIRE(child_a_descendants.size() == 1);
+    CHECK(child_a_descendants[0]->id() == grandchild.id());
+    CHECK(index.descendant_zones(child_b.id()).empty());
+}
