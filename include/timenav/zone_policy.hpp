@@ -208,14 +208,19 @@ namespace timenav {
      *
      * Supported zone keys:
      * - `traffic.policy`
+     * - `traffic.mode` (alias of `traffic.policy`)
      * - `traffic.capacity`
+     * - `traffic.max_occupancy` (alias of `traffic.capacity`)
      * - `traffic.priority`
      * - `traffic.claim_required`
+     * - `traffic.blocks_entry_without_grant`
+     * - `traffic.blocks_traversal_without_grant`
      * - `traffic.entry_rule`
      * - `traffic.exit_rule`
      * - `traffic.speed_limit`
      * - `traffic.waiting_allowed`
      * - `traffic.stop_allowed`
+     * - `traffic.no_stop`
      * - `traffic.replan_trigger`
      * - `traffic.blocked`
      * - `traffic.robot_class`
@@ -336,11 +341,13 @@ namespace timenav {
      * Supported edge keys:
      * - `traffic.speed_limit`
      * - `traffic.lane_type`
+     * - `traffic.lane_kind` (alias of `traffic.lane_type`)
      * - `traffic.reversible`
      * - `traffic.passing_allowed`
      * - `traffic.blocked`
      * - `traffic.priority`
      * - `traffic.capacity`
+     * - `traffic.max_occupancy` (alias of `traffic.capacity`)
      * - `traffic.clearance_width`
      * - `traffic.clearance_height`
      * - `traffic.surface_type`
@@ -349,6 +356,7 @@ namespace timenav {
      * - `traffic.cost_bias`
      * - `traffic.no_stop`
      * - `traffic.preferred_direction`
+     * - `traffic.direction` (alias of `traffic.preferred_direction`)
      *
      * The `directed` argument is structural and therefore wins over any property hint.
      */
