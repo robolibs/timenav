@@ -136,6 +136,13 @@ namespace timenav {
 
             return workspace_->ref();
         }
+        [[nodiscard]] dp::Optional<zoneout::CoordMode> coord_mode() const {
+            if (workspace_ == nullptr) {
+                return dp::nullopt;
+            }
+
+            return workspace_->coord_mode();
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();

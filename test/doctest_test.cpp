@@ -58,6 +58,7 @@ namespace {
 
         TestWorkspace fixture{zoneout::Workspace(std::move(root))};
         fixture.workspace.set_ref(dp::Geo{52.0, 5.0, 10.0});
+        fixture.workspace.set_coord_mode(zoneout::CoordMode::Local);
 
         fixture.node_a_id = zoneout::UUID("11111111-1111-4111-8111-111111111111");
         fixture.node_b_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
@@ -373,4 +374,15 @@ TEST_CASE("workspace index exposes the workspace reference origin") {
 
     const timenav::WorkspaceIndex empty_index{};
     CHECK_FALSE(empty_index.ref().has_value());
+}
+
+TEST_CASE("workspace index exposes the workspace coordinate mode") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    REQUIRE(index.coord_mode().has_value());
+    CHECK(index.coord_mode().value() == zoneout::CoordMode::Local);
+
+    const timenav::WorkspaceIndex empty_index{};
+    CHECK_FALSE(empty_index.coord_mode().has_value());
 }
