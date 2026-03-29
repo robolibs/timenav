@@ -274,6 +274,23 @@ TEST_CASE("claim types expose typed defaults") {
     CHECK(lease.active);
 }
 
+TEST_CASE("claim manager scaffold can be default constructed or bound to an index") {
+    const timenav::ClaimManager empty_manager{};
+    CHECK(empty_manager.empty());
+    CHECK(empty_manager.index() == nullptr);
+    CHECK(empty_manager.request_count() == 0);
+    CHECK(empty_manager.lease_count() == 0);
+
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const timenav::ClaimManager indexed_manager{index};
+
+    CHECK(indexed_manager.empty());
+    CHECK(indexed_manager.index() == &index);
+    CHECK(indexed_manager.request_count() == 0);
+    CHECK(indexed_manager.lease_count() == 0);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
