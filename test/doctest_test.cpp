@@ -1114,6 +1114,11 @@ TEST_CASE("edge blocking excludes routes through blocked zone or edge policy") {
 
     CHECK(timenav::is_edge_hard_blocked(index, fixture.edge_bd_id));
     CHECK_FALSE(timenav::is_edge_hard_blocked(index, fixture.edge_cd_id));
+    const auto blocked_zone_ids = timenav::blocked_zones_for_edge(index, fixture.edge_bd_id);
+    REQUIRE(blocked_zone_ids.size() >= 1);
+    const bool contains_blocked_lane =
+        std::find(blocked_zone_ids.begin(), blocked_zone_ids.end(), fixture.blocked_zone_id) != blocked_zone_ids.end();
+    CHECK(contains_blocked_lane);
 
     const auto search = timenav::shortest_path_search_with_blocking(index, fixture.node_a_id, fixture.node_d_id);
     const auto route_nodes = timenav::reconstruct_route_nodes(search, fixture.node_a_id, fixture.node_d_id);

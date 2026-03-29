@@ -85,6 +85,22 @@ namespace timenav {
         return true;
     }
 
+    inline dp::Vector<zoneout::UUID> blocked_zones_for_edge(const WorkspaceIndex &index, const zoneout::UUID &edge_id) {
+        dp::Vector<zoneout::UUID> blocked_zone_ids;
+        for (const auto *zone : index.zones_of_edge(edge_id)) {
+            if (zone == nullptr) {
+                continue;
+            }
+
+            const auto zone_policy = parse_zone_policy(zone->properties());
+            if (zone_policy.blocked.value_or(false) || zone_policy.kind == ZonePolicyKind::Restricted ||
+                zone_policy.blocks_entry_without_grant || zone_policy.blocks_traversal_without_grant) {
+                blocked_zone_ids.push_back(zone->id());
+            }
+        }
+        return blocked_zone_ids;
+    }
+
     inline bool is_edge_hard_blocked(const WorkspaceIndex &index, const zoneout::UUID &edge_id) {
         const auto *edge_data = index.edge(edge_id);
         if (edge_data == nullptr) {
@@ -92,19 +108,12 @@ namespace timenav {
         }
 
         const auto edge_semantics = parse_edge_traffic_semantics(edge_data->properties);
-        if (edge_semantics.blocked.value_or(false)) {
+        if (edge_semantics.blocked.value_or(false) || edge_semantics.no_stop.value_or(false)) {
             return true;
         }
 
-        for (const auto *zone : index.zones_of_edge(edge_id)) {
-            if (zone == nullptr) {
-                continue;
-            }
-
-            const auto zone_policy = parse_zone_policy(zone->properties());
-            if (zone_policy.blocked.value_or(false) || zone_policy.kind == ZonePolicyKind::Restricted) {
-                return true;
-            }
+        if (!blocked_zones_for_edge(index, edge_id).empty()) {
+            return true;
         }
 
         return false;
