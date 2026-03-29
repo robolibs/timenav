@@ -1263,7 +1263,7 @@ Target:
 - [x] Slice 6.1: add `robot_state.hpp` with robot runtime state
 - [x] Slice 6.2: add `coordinator.hpp` scaffold
 - [x] Slice 6.3: add robot registration/state tracking
-- [ ] Slice 6.4: add route-to-claim derivation helpers
+- [x] Slice 6.4: add route-to-claim derivation helpers
 - [ ] Slice 6.5: add rolling-horizon claim generation
 - [ ] Slice 6.6: add progress updates by current node / edge
 - [ ] Slice 6.7: add release-behind behavior after progress updates

@@ -5,6 +5,34 @@
 
 namespace timenav {
 
+    inline dp::Vector<ClaimTarget> claim_targets_from_route(const RoutePlan &route_plan) {
+        dp::Vector<ClaimTarget> targets;
+
+        for (const auto &zone_id : route_plan.traversed_zone_ids) {
+            targets.push_back(ClaimTarget{ClaimTargetKind::Zone, zone_id});
+        }
+        for (const auto &edge_id : route_plan.traversed_edge_ids) {
+            targets.push_back(ClaimTarget{ClaimTargetKind::Edge, edge_id});
+        }
+        for (const auto &node_id : route_plan.traversed_node_ids) {
+            targets.push_back(ClaimTarget{ClaimTargetKind::Node, node_id});
+        }
+
+        return targets;
+    }
+
+    inline ClaimRequest claim_request_from_route(ClaimId claim_id, RobotId robot_id, MissionId mission_id,
+                                                 const RoutePlan &route_plan,
+                                                 ClaimAccessMode access_mode = ClaimAccessMode::Exclusive) {
+        ClaimRequest request{};
+        request.id = claim_id;
+        request.robot_id = robot_id;
+        request.mission_id = mission_id;
+        request.access_mode = access_mode;
+        request.targets = claim_targets_from_route(route_plan);
+        return request;
+    }
+
     class Coordinator {
       public:
         Coordinator() = default;

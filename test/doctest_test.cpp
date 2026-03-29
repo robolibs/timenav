@@ -345,6 +345,39 @@ TEST_CASE("coordinator registers and updates robot state") {
     CHECK(coordinator.find_robot_state(timenav::RobotId{99}) == nullptr);
 }
 
+TEST_CASE("route to claim helpers derive ordered claim targets and requests") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    const auto targets = timenav::claim_targets_from_route(route_plan.value());
+    const auto request =
+        timenav::claim_request_from_route(timenav::ClaimId{111}, timenav::RobotId{12}, timenav::MissionId{13},
+                                          route_plan.value(), timenav::ClaimAccessMode::Exclusive);
+
+    REQUIRE(targets.size() ==
+            route_plan.value().traversed_zone_ids.size() + route_plan.value().traversed_edge_ids.size() +
+                route_plan.value().traversed_node_ids.size());
+    CHECK(targets[0].kind == timenav::ClaimTargetKind::Zone);
+    CHECK(targets[route_plan.value().traversed_zone_ids.size()].kind == timenav::ClaimTargetKind::Edge);
+    CHECK(targets.back().kind == timenav::ClaimTargetKind::Node);
+    CHECK(request.id == timenav::ClaimId{111});
+    CHECK(request.robot_id == timenav::RobotId{12});
+    CHECK(request.mission_id == timenav::MissionId{13});
+    REQUIRE(request.targets.size() == targets.size());
+    CHECK(request.targets.front().kind == targets.front().kind);
+    CHECK(request.targets.front().resource_id == targets.front().resource_id);
+    CHECK(request.targets.back().kind == targets.back().kind);
+    CHECK(request.targets.back().resource_id == targets.back().resource_id);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
