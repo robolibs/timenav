@@ -181,7 +181,31 @@ namespace timenav {
 
         for (const auto &zone_id : route_plan.traversed_zone_ids) {
             const auto schedule_window = index.zone_property(zone_id, "traffic.schedule_window");
-            if (schedule_window.has_value() && schedule_window.value() != active_window) {
+            if (!schedule_window.has_value()) {
+                continue;
+            }
+
+            bool matches_window = false;
+            std::string raw = schedule_window.value().c_str();
+            std::size_t token_start = 0;
+            while (token_start <= raw.size()) {
+                const auto token_end = raw.find(',', token_start);
+                auto token = raw.substr(token_start,
+                                        token_end == std::string::npos ? std::string::npos : token_end - token_start);
+                const auto first = token.find_first_not_of(" \t");
+                const auto last = token.find_last_not_of(" \t");
+                token = first == std::string::npos ? "" : token.substr(first, last - first + 1);
+                if (token == active_window) {
+                    matches_window = true;
+                    break;
+                }
+                if (token_end == std::string::npos) {
+                    break;
+                }
+                token_start = token_end + 1;
+            }
+
+            if (!matches_window) {
                 conflicting_zone_ids.push_back(zone_id);
             }
         }

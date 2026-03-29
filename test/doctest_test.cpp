@@ -785,7 +785,7 @@ TEST_CASE("coordinator releases leases behind current progress") {
 TEST_CASE("schedule window helpers detect route zone conflicts") {
     auto fixture = make_test_workspace();
     fixture.workspace.root_zone().children()[0].set_property("traffic.schedule_window", "day");
-    fixture.workspace.root_zone().children()[1].set_property("traffic.schedule_window", "night");
+    fixture.workspace.root_zone().children()[1].set_property("traffic.schedule_window", "night, day");
 
     const timenav::WorkspaceIndex index{fixture.workspace};
     dp::Vector<zoneout::UUID> route_nodes;
@@ -797,9 +797,8 @@ TEST_CASE("schedule window helpers detect route zone conflicts") {
 
     const auto conflicts = timenav::route_schedule_window_conflicts(index, route_plan.value(), "day");
 
-    REQUIRE(conflicts.size() == 1);
-    CHECK(conflicts[0] == fixture.workspace.root_zone().children()[1].id());
-    CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "day"));
+    CHECK(conflicts.empty());
+    CHECK(timenav::route_matches_schedule_window(index, route_plan.value(), "day"));
     CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "night"));
 }
 
