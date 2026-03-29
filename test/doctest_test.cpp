@@ -532,6 +532,7 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
 
     const timenav::vda::Adapter adapter{};
     const auto order = adapter.order_from_route(route_plan.value());
+    const auto indexed_order = adapter.order_from_route(index, route_plan.value());
     const auto direct_order = timenav::vda::map_route_plan(route_plan.value());
 
     CHECK(order.order_id == fixture.node_c_id.toString());
@@ -543,6 +544,8 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
     CHECK(order.edges[0].edge_id == fixture.edge_ab_id.toString());
     CHECK(order.edges[0].start_node_id == fixture.node_a_id.toString());
     CHECK(order.edges[0].end_node_id == fixture.node_b_id.toString());
+    REQUIRE(indexed_order.nodes[0].zone_id.has_value());
+    REQUIRE(indexed_order.edges[0].zone_id.has_value());
 }
 
 TEST_CASE("vda adapter maps runtime state to state-compatible objects") {

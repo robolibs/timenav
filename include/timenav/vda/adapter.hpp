@@ -42,12 +42,38 @@ namespace timenav::vda {
 
         return order;
     }
+    inline Order map_route_plan(const WorkspaceIndex &index, const RoutePlan &route_plan) {
+        Order order = map_route_plan(route_plan);
+
+        for (dp::u64 i = 0; i < route_plan.traversed_node_ids.size() && i < order.nodes.size(); ++i) {
+            const auto node_zones = index.zones_of_node(route_plan.traversed_node_ids[i]);
+            if (!node_zones.empty() && node_zones.front() != nullptr) {
+                order.nodes[i].zone_id = uuid_string(node_zones.front()->id());
+            }
+        }
+
+        for (dp::u64 i = 0; i < route_plan.traversed_edge_ids.size() && i < order.edges.size(); ++i) {
+            const auto edge_zones = index.zones_of_edge(route_plan.traversed_edge_ids[i]);
+            if (!edge_zones.empty() && edge_zones.front() != nullptr) {
+                order.edges[i].zone_id = uuid_string(edge_zones.front()->id());
+            }
+            if (const auto *edge = index.edge(route_plan.traversed_edge_ids[i]); edge != nullptr) {
+                const auto semantics = parse_edge_traffic_semantics(edge->properties);
+                if (semantics.speed_limit.has_value()) {
+                    order.edges[i].max_speed = semantics.speed_limit.value();
+                }
+            }
+        }
+
+        return order;
+    }
 
     class Adapter {
       public:
         Adapter() = default;
 
         [[nodiscard]] Order order_from_route(const RoutePlan &route_plan) const;
+        [[nodiscard]] Order order_from_route(const WorkspaceIndex &index, const RoutePlan &route_plan) const;
         [[nodiscard]] State state_from_robot(const RobotState &robot_state) const;
         [[nodiscard]] Connection connection_from_factsheet(const Factsheet &factsheet) const;
         [[nodiscard]] Response response_for_action(const InstantAction &action, ActionStatus status,
@@ -56,6 +82,9 @@ namespace timenav::vda {
     };
 
     inline Order Adapter::order_from_route(const RoutePlan &route_plan) const { return map_route_plan(route_plan); }
+    inline Order Adapter::order_from_route(const WorkspaceIndex &index, const RoutePlan &route_plan) const {
+        return map_route_plan(index, route_plan);
+    }
 
     inline State map_robot_state(const RobotState &robot_state) {
         State state{};
