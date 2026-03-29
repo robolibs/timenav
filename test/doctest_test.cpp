@@ -12,7 +12,16 @@ namespace {
         return polygon;
     }
 
-    zoneout::Workspace make_test_workspace() {
+    struct TestWorkspace {
+        zoneout::Workspace workspace;
+        zoneout::UUID node_a_id;
+        zoneout::UUID node_b_id;
+        zoneout::UUID node_c_id;
+
+        explicit TestWorkspace(zoneout::Workspace workspace_value) : workspace(std::move(workspace_value)) {}
+    };
+
+    TestWorkspace make_test_workspace() {
         auto root = zoneout::ZoneBuilder()
                         .with_name("root")
                         .with_type("workspace")
@@ -37,7 +46,17 @@ namespace {
         root.add_child(std::move(child_a));
         root.add_child(std::move(child_b));
 
-        return zoneout::Workspace(std::move(root));
+        TestWorkspace fixture{zoneout::Workspace(std::move(root))};
+
+        fixture.node_a_id = zoneout::UUID("11111111-1111-4111-8111-111111111111");
+        fixture.node_b_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
+        fixture.node_c_id = zoneout::UUID("33333333-3333-4333-8333-333333333333");
+
+        fixture.workspace.add_node(zoneout::NodeData{fixture.node_a_id, dp::Point{20.0, 20.0, 0.0}});
+        fixture.workspace.add_node(zoneout::NodeData{fixture.node_b_id, dp::Point{30.0, 20.0, 0.0}});
+        fixture.workspace.add_node(zoneout::NodeData{fixture.node_c_id, dp::Point{70.0, 20.0, 0.0}});
+
+        return fixture;
     }
 
 } // namespace
@@ -73,7 +92,8 @@ TEST_CASE("workspace index scaffold can be default constructed") {
 }
 
 TEST_CASE("workspace index can borrow or own a workspace and expose the root zone") {
-    auto workspace = make_test_workspace();
+    auto fixture = make_test_workspace();
+    auto &workspace = fixture.workspace;
     const auto root_id = workspace.root_zone().id();
 
     const timenav::WorkspaceIndex borrowed_index{workspace};
@@ -84,7 +104,7 @@ TEST_CASE("workspace index can borrow or own a workspace and expose the root zon
     CHECK(borrowed_index.root_zone()->id() == root_id);
     CHECK(borrowed_index.root_zone_id().value() == root_id);
 
-    auto owned_workspace = std::make_shared<zoneout::Workspace>(make_test_workspace());
+    auto owned_workspace = std::make_shared<zoneout::Workspace>(make_test_workspace().workspace);
     const auto owned_root_id = owned_workspace->root_zone().id();
 
     const timenav::WorkspaceIndex owned_index{owned_workspace};
@@ -97,7 +117,8 @@ TEST_CASE("workspace index can borrow or own a workspace and expose the root zon
 }
 
 TEST_CASE("workspace index resolves zones by uuid") {
-    const auto workspace = make_test_workspace();
+    const auto fixture = make_test_workspace();
+    const auto &workspace = fixture.workspace;
     const auto &root = workspace.root_zone();
     REQUIRE(root.child_count() == 2);
 
@@ -113,4 +134,17 @@ TEST_CASE("workspace index resolves zones by uuid") {
     REQUIRE(index.zone(child_b.id()) != nullptr);
     CHECK(index.zone(child_b.id())->name() == "child-b");
     CHECK(index.zone(zoneout::UUID{}) == nullptr);
+}
+
+TEST_CASE("workspace index resolves nodes by uuid") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    REQUIRE(index.node(fixture.node_a_id) != nullptr);
+    CHECK(index.node(fixture.node_a_id)->position == dp::Point{20.0, 20.0, 0.0});
+    REQUIRE(index.node(fixture.node_b_id) != nullptr);
+    CHECK(index.node(fixture.node_b_id)->position == dp::Point{30.0, 20.0, 0.0});
+    REQUIRE(index.node(fixture.node_c_id) != nullptr);
+    CHECK(index.node(fixture.node_c_id)->position == dp::Point{70.0, 20.0, 0.0});
+    CHECK(index.node(zoneout::UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")) == nullptr);
 }
