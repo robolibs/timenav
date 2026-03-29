@@ -146,6 +146,26 @@ namespace timenav {
                    value == "restricted" || value == "slow" || value == "replanning" || value == "no_stop";
         }
 
+        inline bool is_known_zone_traffic_key(const std::string &key) {
+            return key == "traffic.policy" || key == "traffic.mode" || key == "traffic.capacity" ||
+                   key == "traffic.max_occupancy" || key == "traffic.priority" || key == "traffic.claim_required" ||
+                   key == "traffic.entry_rule" || key == "traffic.exit_rule" || key == "traffic.speed_limit" ||
+                   key == "traffic.waiting_allowed" || key == "traffic.stop_allowed" || key == "traffic.no_stop" ||
+                   key == "traffic.replan_trigger" || key == "traffic.blocked" || key == "traffic.robot_class" ||
+                   key == "traffic.schedule_window" || key == "traffic.access_group" ||
+                   key == "traffic.blocks_entry_without_grant" || key == "traffic.blocks_traversal_without_grant";
+        }
+
+        inline bool is_known_edge_traffic_key(const std::string &key) {
+            return key == "traffic.speed_limit" || key == "traffic.lane_type" || key == "traffic.lane_kind" ||
+                   key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.blocked" ||
+                   key == "traffic.priority" || key == "traffic.capacity" || key == "traffic.max_occupancy" ||
+                   key == "traffic.clearance_width" || key == "traffic.clearance_height" ||
+                   key == "traffic.surface_type" || key == "traffic.robot_class" || key == "traffic.allowed_payload" ||
+                   key == "traffic.cost_bias" || key == "traffic.no_stop" || key == "traffic.preferred_direction" ||
+                   key == "traffic.direction";
+        }
+
     } // namespace detail
 
     inline dp::Result<bool> parse_traffic_bool(std::string_view value) {
@@ -403,12 +423,15 @@ namespace timenav {
         dp::Vector<TrafficParseIssue> issues;
 
         for (const auto &[key, value] : properties) {
-            if (key == "traffic.policy") {
+            if (key.rfind("traffic.", 0) == 0 && !detail::is_known_zone_traffic_key(key)) {
+                issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
+                                                   dp::String{"unknown zone traffic key"}});
+            } else if (key == "traffic.policy" || key == "traffic.mode") {
                 if (!detail::is_known_zone_policy_kind(value)) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
                                                        dp::String{"unknown zone policy keyword"}});
                 }
-            } else if (key == "traffic.capacity") {
+            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_err() || parsed.value_or(0) < 1) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
@@ -426,10 +449,18 @@ namespace timenav {
                                                        dp::String{"traffic.speed_limit must be positive"}});
                 }
             } else if (key == "traffic.claim_required" || key == "traffic.waiting_allowed" ||
-                       key == "traffic.stop_allowed" || key == "traffic.blocked" || key == "traffic.replan_trigger") {
+                       key == "traffic.stop_allowed" || key == "traffic.blocked" || key == "traffic.replan_trigger" ||
+                       key == "traffic.no_stop" || key == "traffic.blocks_entry_without_grant" ||
+                       key == "traffic.blocks_traversal_without_grant") {
                 if (parse_traffic_bool(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic boolean key must parse as true/false"}});
+                }
+            } else if (key == "traffic.entry_rule" || key == "traffic.exit_rule" || key == "traffic.robot_class" ||
+                       key == "traffic.schedule_window" || key == "traffic.access_group") {
+                if (parse_traffic_string(value).is_err()) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic string key must not be empty"}});
                 }
             }
         }
@@ -442,7 +473,10 @@ namespace timenav {
         dp::Vector<TrafficParseIssue> issues;
 
         for (const auto &[key, value] : properties) {
-            if (key == "traffic.capacity") {
+            if (key.rfind("traffic.", 0) == 0 && !detail::is_known_edge_traffic_key(key)) {
+                issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
+                                                   dp::String{"unknown edge traffic key"}});
+            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_err() || parsed.value_or(0) < 1) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
@@ -465,6 +499,13 @@ namespace timenav {
                 if (parse_traffic_bool(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic boolean key must parse as true/false"}});
+                }
+            } else if (key == "traffic.lane_type" || key == "traffic.lane_kind" || key == "traffic.surface_type" ||
+                       key == "traffic.robot_class" || key == "traffic.allowed_payload" ||
+                       key == "traffic.preferred_direction" || key == "traffic.direction") {
+                if (parse_traffic_string(value).is_err()) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic string key must not be empty"}});
                 }
             }
         }

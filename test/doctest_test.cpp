@@ -1322,10 +1322,12 @@ TEST_CASE("traffic property validation reports malformed values") {
         {"traffic.capacity", "0"},
         {"traffic.speed_limit", "-1.0"},
         {"traffic.claim_required", "sometimes"},
+        {"traffic.entry_rule", "   "},
+        {"traffic.unknown_zone_key", "1"},
     };
     const auto zone_issues = timenav::validate_zone_traffic_properties(bad_zone_properties);
 
-    REQUIRE(zone_issues.size() == 4);
+    REQUIRE(zone_issues.size() == 6);
     dp::u64 zone_warnings = 0;
     dp::u64 zone_errors = 0;
     for (const auto &issue : zone_issues) {
@@ -1335,21 +1337,31 @@ TEST_CASE("traffic property validation reports malformed values") {
             ++zone_errors;
         }
     }
-    CHECK(zone_warnings == 1);
-    CHECK(zone_errors == 3);
+    CHECK(zone_warnings == 2);
+    CHECK(zone_errors == 4);
 
     const std::unordered_map<std::string, std::string> bad_edge_properties = {
         {"traffic.capacity", "0"},
         {"traffic.speed_limit", "slow"},
         {"traffic.clearance_width", "-2.0"},
         {"traffic.no_stop", "later"},
+        {"traffic.direction", "   "},
+        {"traffic.unknown_edge_key", "1"},
     };
     const auto edge_issues = timenav::validate_edge_traffic_properties(bad_edge_properties);
 
-    REQUIRE(edge_issues.size() == 4);
+    REQUIRE(edge_issues.size() == 6);
+    dp::u64 edge_warnings = 0;
+    dp::u64 edge_errors = 0;
     for (const auto &issue : edge_issues) {
-        CHECK(issue.severity == timenav::TrafficIssueSeverity::Error);
+        if (issue.severity == timenav::TrafficIssueSeverity::Warning) {
+            ++edge_warnings;
+        } else if (issue.severity == timenav::TrafficIssueSeverity::Error) {
+            ++edge_errors;
+        }
     }
+    CHECK(edge_warnings == 1);
+    CHECK(edge_errors == 5);
 }
 
 TEST_CASE("zone policy merge rules honor dominance capacity and child overrides") {
