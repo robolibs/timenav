@@ -485,8 +485,9 @@ TEST_CASE("vda response types expose typed defaults") {
     const timenav::vda::Response response{};
 
     CHECK(response.action_id.empty());
-    CHECK_FALSE(response.accepted);
+    CHECK(response.status == timenav::vda::ActionStatus::Rejected);
     CHECK_FALSE(response.description.has_value());
+    CHECK_FALSE(response.result_code.has_value());
 }
 
 TEST_CASE("vda adapter scaffold is default constructible") {
@@ -581,7 +582,7 @@ TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
 
     timenav::vda::Response response{};
     response.action_id = "stop";
-    response.accepted = true;
+    response.status = timenav::vda::ActionStatus::Accepted;
     response.description = "accepted";
 
     CHECK(connection.version == "3.0.0");
@@ -594,6 +595,7 @@ TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
     CHECK(state.last_node_id.value() == fixture.node_b_id.toString());
     CHECK(state.last_edge_id.value() == fixture.edge_bc_id.toString());
     CHECK(instant_action.action_type == "stopPause");
+    CHECK(response.status == timenav::vda::ActionStatus::Accepted);
     REQUIRE(response.description.has_value());
     CHECK(response.description.value() == "accepted");
 }
