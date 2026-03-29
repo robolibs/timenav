@@ -1429,14 +1429,25 @@ TEST_CASE("effective edge semantics combine structural and zone-derived rules") 
     timenav::ZonePolicy zone_a{};
     zone_a.speed_limit = 1.0;
     zone_a.capacity = 2;
+    zone_a.capacity_is_explicit = true;
+    zone_a.priority = 5.0;
 
     timenav::ZonePolicy zone_b{};
     zone_b.kind = timenav::ZonePolicyKind::NoStop;
     zone_b.robot_class = dp::String{"forklift"};
 
+    timenav::ZonePolicy zone_c{};
+    zone_c.kind = timenav::ZonePolicyKind::Restricted;
+    zone_c.blocked = true;
+
+    timenav::ZonePolicy zone_d{};
+    zone_d.kind = timenav::ZonePolicyKind::Slowdown;
+
     dp::Vector<timenav::ZonePolicy> zone_policies;
     zone_policies.push_back(zone_a);
     zone_policies.push_back(zone_b);
+    zone_policies.push_back(zone_c);
+    zone_policies.push_back(zone_d);
 
     const auto semantics = timenav::derive_effective_edge_semantics(edge_properties, true, zone_policies);
 
@@ -1445,10 +1456,17 @@ TEST_CASE("effective edge semantics combine structural and zone-derived rules") 
     CHECK(semantics.speed_limit.value() == doctest::Approx(1.0));
     REQUIRE(semantics.capacity.has_value());
     CHECK(semantics.capacity.value() == 2);
+    CHECK(semantics.capacity_is_explicit);
+    REQUIRE(semantics.priority.has_value());
+    CHECK(semantics.priority.value() == doctest::Approx(5.0));
     REQUIRE(semantics.robot_class.has_value());
     CHECK(semantics.robot_class.value() == "tow");
     REQUIRE(semantics.no_stop.has_value());
     CHECK(semantics.no_stop.value());
+    REQUIRE(semantics.blocked.has_value());
+    CHECK(semantics.blocked.value());
+    REQUIRE(semantics.cost_bias.has_value());
+    CHECK(semantics.cost_bias.value() == doctest::Approx(1.0));
 }
 
 TEST_CASE("policy layer regression covers parsing validation inheritance and derivation") {

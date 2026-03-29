@@ -620,11 +620,13 @@ namespace timenav {
                 }
             }
 
-            if (zone_policy.kind == ZonePolicyKind::CapacityLimited || zone_policy.capacity != 1) {
+            if (zone_policy.capacity_is_explicit || zone_policy.kind == ZonePolicyKind::CapacityLimited) {
                 if (!semantics.capacity.has_value()) {
                     semantics.capacity = zone_policy.capacity;
+                    semantics.capacity_is_explicit = true;
                 } else {
                     semantics.capacity = std::min(semantics.capacity.value(), zone_policy.capacity);
+                    semantics.capacity_is_explicit = true;
                 }
             }
 
@@ -632,9 +634,21 @@ namespace timenav {
                 semantics.robot_class = zone_policy.robot_class;
             }
 
+            if (!semantics.priority.has_value() && zone_policy.priority.has_value()) {
+                semantics.priority = zone_policy.priority;
+            }
+
             if (zone_policy.kind == ZonePolicyKind::NoStop || zone_policy.blocked.value_or(false) ||
                 zone_policy.kind == ZonePolicyKind::Restricted) {
                 semantics.no_stop = true;
+            }
+
+            if (zone_policy.blocked.value_or(false) || zone_policy.kind == ZonePolicyKind::Restricted) {
+                semantics.blocked = true;
+            }
+
+            if (zone_policy.kind == ZonePolicyKind::Slowdown) {
+                semantics.cost_bias = semantics.cost_bias.value_or(0.0) + 1.0;
             }
         }
 
