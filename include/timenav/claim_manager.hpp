@@ -57,6 +57,40 @@ namespace timenav {
                    edge_claims_compatible(lhs, rhs);
         }
 
+        [[nodiscard]] static bool claims_compatible(const ClaimRequest &request, const Lease &lease) noexcept {
+            ClaimRequest lease_view{};
+            lease_view.access_mode = lease.access_mode;
+            lease_view.targets = lease.targets;
+            return claims_compatible(request, lease_view);
+        }
+
+        [[nodiscard]] ClaimEvaluation evaluate_request(const ClaimRequest &request) const {
+            for (const auto &active_request : active_requests_) {
+                if (active_request.id == request.id) {
+                    continue;
+                }
+
+                if (!claims_compatible(request, active_request)) {
+                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with active request"},
+                                           active_request.id, dp::nullopt};
+                }
+            }
+
+            for (const auto &active_lease : active_leases_) {
+                if (!active_lease.active) {
+                    continue;
+                }
+
+                if (!claims_compatible(request, active_lease)) {
+                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with granted lease"}, dp::nullopt,
+                                           active_lease.id};
+                }
+            }
+
+            return ClaimEvaluation{ClaimDecision::Grant, dp::String{"claim is compatible with current state"},
+                                   dp::nullopt, dp::nullopt};
+        }
+
       private:
         [[nodiscard]] static bool target_kind_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs,
                                                          ClaimTargetKind kind) noexcept {

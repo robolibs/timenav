@@ -384,6 +384,54 @@ TEST_CASE("edge and node claim compatibility detect overlapping exclusive target
     CHECK(timenav::ClaimManager::claims_compatible(lhs, disjoint));
 }
 
+TEST_CASE("claim manager evaluates requests against active requests and leases") {
+    timenav::ClaimManager manager{};
+    const auto shared_zone = zoneout::UUID("90909090-9090-4090-8090-909090909090");
+    const auto free_zone = zoneout::UUID("a0a0a0a0-a0a0-40a0-80a0-a0a0a0a0a0a0");
+
+    timenav::ClaimRequest active_request{};
+    active_request.id = timenav::ClaimId{61};
+    active_request.access_mode = timenav::ClaimAccessMode::Exclusive;
+    active_request.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, shared_zone});
+    manager.add_request(active_request);
+
+    timenav::Lease active_lease{};
+    active_lease.id = timenav::LeaseId{71};
+    active_lease.access_mode = timenav::ClaimAccessMode::Exclusive;
+    active_lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, free_zone});
+    manager.add_lease(active_lease);
+
+    timenav::ClaimRequest denied_by_request{};
+    denied_by_request.id = timenav::ClaimId{62};
+    denied_by_request.access_mode = timenav::ClaimAccessMode::Exclusive;
+    denied_by_request.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, shared_zone});
+
+    timenav::ClaimRequest denied_by_lease{};
+    denied_by_lease.id = timenav::ClaimId{63};
+    denied_by_lease.access_mode = timenav::ClaimAccessMode::Exclusive;
+    denied_by_lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, free_zone});
+
+    timenav::ClaimRequest granted{};
+    granted.id = timenav::ClaimId{64};
+    granted.access_mode = timenav::ClaimAccessMode::Shared;
+    granted.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zoneout::UUID("b0b0b0b0-b0b0-40b0-80b0-b0b0b0b0b0b0")});
+
+    const auto request_conflict = manager.evaluate_request(denied_by_request);
+    const auto lease_conflict = manager.evaluate_request(denied_by_lease);
+    const auto grant = manager.evaluate_request(granted);
+
+    CHECK(request_conflict.decision == timenav::ClaimDecision::Deny);
+    REQUIRE(request_conflict.conflicting_claim_id.has_value());
+    CHECK(request_conflict.conflicting_claim_id.value() == timenav::ClaimId{61});
+    CHECK(lease_conflict.decision == timenav::ClaimDecision::Deny);
+    REQUIRE(lease_conflict.conflicting_lease_id.has_value());
+    CHECK(lease_conflict.conflicting_lease_id.value() == timenav::LeaseId{71});
+    CHECK(grant.decision == timenav::ClaimDecision::Grant);
+    CHECK_FALSE(grant.conflicting_claim_id.has_value());
+    CHECK_FALSE(grant.conflicting_lease_id.has_value());
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

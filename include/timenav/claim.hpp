@@ -10,6 +10,8 @@ namespace timenav {
 
     enum class ClaimAccessMode { Shared, Exclusive };
 
+    enum class ClaimDecision { Grant, Deny };
+
     struct ClaimTarget {
         ClaimTargetKind kind = ClaimTargetKind::Zone;
         zoneout::UUID resource_id = zoneout::UUID::null();
@@ -32,6 +34,13 @@ namespace timenav {
         dp::Vector<ClaimTarget> targets;
         dp::Optional<dp::u64> expires_at_tick;
         bool active = true;
+    };
+
+    struct ClaimEvaluation {
+        ClaimDecision decision = ClaimDecision::Grant;
+        dp::String reason;
+        dp::Optional<ClaimId> conflicting_claim_id;
+        dp::Optional<LeaseId> conflicting_lease_id;
     };
 
 } // namespace timenav
