@@ -349,6 +349,10 @@ TEST_CASE("robot state exposes typed defaults") {
     CHECK_FALSE(state.route_plan.has_value());
     CHECK(state.pending_claim_ids.empty());
     CHECK(state.active_lease_ids.empty());
+    CHECK(state.progress_state == timenav::RobotProgressState::Idle);
+    CHECK(state.next_route_step_index == 0);
+    CHECK_FALSE(state.hold_reason.has_value());
+    CHECK_FALSE(state.last_claim_tick.has_value());
     CHECK(state.horizon == 0);
     CHECK(state.updated_at_tick == 0);
 }

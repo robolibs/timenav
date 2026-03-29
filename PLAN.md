@@ -1359,7 +1359,7 @@ Still missing / still weak:
 - [ ] add queueing and reservation-window logic
 - [ ] define richer robot progress/state lifecycle behavior
 
-- [ ] Slice 6.1: add `robot_state.hpp` with robot runtime state
+- [x] Slice 6.1: add `robot_state.hpp` with robot runtime state
 - [ ] Slice 6.2: add `coordinator.hpp` scaffold
 - [ ] Slice 6.3: add robot registration/state tracking
 - [ ] Slice 6.4: add route-to-claim derivation helpers
