@@ -813,6 +813,14 @@ TEST_CASE("arbitration hooks choose proceed yield or replan from simple priority
           timenav::ArbitrationDecision::Proceed);
     CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{1.0, 1.0, false, false}) ==
           timenav::ArbitrationDecision::Replan);
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{1.0, 1.0, false, false, timenav::RobotProgressState::FollowingRoute,
+                                          timenav::RobotProgressState::Waiting}) ==
+          timenav::ArbitrationDecision::Proceed);
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{1.0, 1.0, false, false, timenav::RobotProgressState::Blocked,
+                                          timenav::RobotProgressState::FollowingRoute}) ==
+          timenav::ArbitrationDecision::Yield);
 }
 
 TEST_CASE("coordinator regression covers multi-robot progress release and scheduling conflicts") {

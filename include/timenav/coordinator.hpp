@@ -225,6 +225,8 @@ namespace timenav {
         dp::f64 other_priority = 0.0;
         bool self_holds_lease = false;
         bool other_holds_lease = false;
+        RobotProgressState self_state = RobotProgressState::Idle;
+        RobotProgressState other_state = RobotProgressState::Idle;
     };
 
     inline ArbitrationDecision arbitrate_right_of_way(const ArbitrationContext &context) {
@@ -238,6 +240,20 @@ namespace timenav {
             return ArbitrationDecision::Proceed;
         }
         if (context.self_priority < context.other_priority) {
+            return ArbitrationDecision::Yield;
+        }
+        if (context.self_state == RobotProgressState::Blocked && context.other_state != RobotProgressState::Blocked) {
+            return ArbitrationDecision::Yield;
+        }
+        if (context.other_state == RobotProgressState::Blocked && context.self_state != RobotProgressState::Blocked) {
+            return ArbitrationDecision::Proceed;
+        }
+        if (context.self_state == RobotProgressState::FollowingRoute &&
+            context.other_state == RobotProgressState::Waiting) {
+            return ArbitrationDecision::Proceed;
+        }
+        if (context.self_state == RobotProgressState::Waiting &&
+            context.other_state == RobotProgressState::FollowingRoute) {
             return ArbitrationDecision::Yield;
         }
         return ArbitrationDecision::Replan;
