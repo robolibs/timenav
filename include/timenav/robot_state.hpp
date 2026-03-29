@@ -6,7 +6,7 @@
 
 namespace timenav {
 
-    enum class RobotProgressState { Idle, FollowingRoute, Waiting, Blocked };
+    enum class RobotProgressState { Idle, FollowingRoute, Waiting, Queued, Blocked, Replanning };
 
     struct RobotState {
         RobotId robot_id{0};
@@ -20,6 +20,10 @@ namespace timenav {
         dp::u64 next_route_step_index = 0;
         dp::Optional<dp::String> hold_reason;
         dp::Optional<dp::u64> last_claim_tick;
+        dp::Optional<dp::u64> scheduled_start_tick;
+        dp::Optional<dp::u64> reserved_until_tick;
+        dp::u64 wait_ticks = 0;
+        bool needs_replan = false;
         dp::u64 horizon = 0;
         dp::u64 updated_at_tick = 0;
     };

@@ -98,6 +98,7 @@ namespace timenav {
 
                 Lease archived = *it;
                 archived.active = false;
+                archived.disposition = LeaseDisposition::Released;
                 archived.released_at_tick = released_at_tick;
                 released_leases_.push_back(archived);
                 it = active_leases_.erase(it);
@@ -111,6 +112,7 @@ namespace timenav {
                 if (it->id == id) {
                     Lease released = *it;
                     released.active = false;
+                    released.disposition = LeaseDisposition::Released;
                     released.released_at_tick = released_at_tick;
                     released_leases_.push_back(released);
                     active_leases_.erase(it);
@@ -131,6 +133,7 @@ namespace timenav {
 
                 Lease released = *it;
                 released.active = false;
+                released.disposition = LeaseDisposition::Expired;
                 released.released_at_tick = current_tick;
                 released_leases_.push_back(released);
                 it = active_leases_.erase(it);
@@ -138,6 +141,41 @@ namespace timenav {
             }
 
             return expired;
+        }
+        [[nodiscard]] bool refresh_lease(LeaseId id, dp::u64 refreshed_at_tick,
+                                         dp::Optional<dp::u64> expires_at_tick = dp::nullopt) {
+            for (auto &lease : active_leases_) {
+                if (lease.id != id) {
+                    continue;
+                }
+
+                lease.refreshed_at_tick = refreshed_at_tick;
+                if (expires_at_tick.has_value()) {
+                    lease.expires_at_tick = expires_at_tick;
+                }
+                return true;
+            }
+
+            return false;
+        }
+        [[nodiscard]] bool revoke_lease(LeaseId id, dp::String reason, dp::u64 revoked_at_tick) {
+            for (auto it = active_leases_.begin(); it != active_leases_.end(); ++it) {
+                if (it->id != id) {
+                    continue;
+                }
+
+                Lease revoked = *it;
+                revoked.active = false;
+                revoked.disposition = LeaseDisposition::Revoked;
+                revoked.revoked_at_tick = revoked_at_tick;
+                revoked.released_at_tick = revoked_at_tick;
+                revoked.revoke_reason = reason;
+                released_leases_.push_back(revoked);
+                active_leases_.erase(it);
+                return true;
+            }
+
+            return false;
         }
 
         [[nodiscard]] const ClaimRequest *find_request(ClaimId id) const noexcept {
@@ -369,6 +407,7 @@ namespace timenav {
                     violation.conflicting_claim_id = blocking_claim_id;
                     violation.conflicting_lease_id = blocking_lease_id;
                     violation.diagnostics.push_back(dp::String{"zone capacity limit reached"});
+                    append_target_diagnostics(violation.diagnostics, target);
                     violation.diagnostics.push_back(dp::String{"configured capacity="} +
                                                     dp::String{std::to_string(policy.capacity)});
                     violation.diagnostics.push_back(dp::String{"observed occupancy="} +
@@ -435,6 +474,7 @@ namespace timenav {
                     violation.conflicting_claim_id = blocking_claim_id;
                     violation.conflicting_lease_id = blocking_lease_id;
                     violation.diagnostics.push_back(dp::String{"edge capacity limit reached"});
+                    append_target_diagnostics(violation.diagnostics, target);
                     violation.diagnostics.push_back(dp::String{"configured capacity="} +
                                                     dp::String{std::to_string(semantics.capacity.value())});
                     violation.diagnostics.push_back(dp::String{"observed occupancy="} +
@@ -499,15 +539,85 @@ namespace timenav {
             return dp::String{"conflicts with "} + source + dp::String{" on "} +
                    target_kind_name(conflicts.front().kind) + dp::String{" target"};
         }
-        [[nodiscard]] static dp::Vector<dp::String>
-        build_conflict_diagnostics(const dp::String &source, const dp::Vector<ClaimTarget> &conflicts) {
+        [[nodiscard]] dp::Vector<dp::String>
+        build_conflict_diagnostics(const dp::String &source, const dp::Vector<ClaimTarget> &conflicts) const {
             dp::Vector<dp::String> diagnostics;
             diagnostics.push_back(dp::String{"collision detected with "} + source);
             if (!conflicts.empty()) {
                 diagnostics.push_back(dp::String{"blocking "} + target_kind_name(conflicts.front().kind) +
                                       dp::String{" id="} + dp::String{conflicts.front().resource_id.toString()});
+                append_target_diagnostics(diagnostics, conflicts.front());
             }
             return diagnostics;
+        }
+        void append_target_diagnostics(dp::Vector<dp::String> &diagnostics, const ClaimTarget &target) const {
+            if (index_ == nullptr) {
+                return;
+            }
+
+            if (target.kind == ClaimTargetKind::Zone) {
+                const auto *zone = index_->zone(target.resource_id);
+                if (zone == nullptr) {
+                    return;
+                }
+
+                const auto policy = parse_zone_policy(zone->properties());
+                if (policy.blocks_entry_without_grant || policy.blocks_traversal_without_grant ||
+                    policy.blocked.value_or(false)) {
+                    diagnostics.push_back("zone blocks traversal without a grant");
+                }
+                if (policy.kind == ZonePolicyKind::Corridor) {
+                    diagnostics.push_back("zone is treated as a corridor");
+                }
+                if (policy.waiting_allowed.has_value() && !policy.waiting_allowed.value()) {
+                    diagnostics.push_back("zone does not allow waiting");
+                }
+                if (policy.stop_allowed.has_value() && !policy.stop_allowed.value()) {
+                    diagnostics.push_back("zone does not allow stopping");
+                }
+                if (policy.schedule_window.has_value()) {
+                    diagnostics.push_back(dp::String{"zone schedule window="} + policy.schedule_window.value());
+                }
+                if (policy.speed_limit.has_value()) {
+                    diagnostics.push_back(dp::String{"zone speed limit="} +
+                                          dp::String{std::to_string(policy.speed_limit.value())});
+                }
+                return;
+            }
+
+            if (target.kind == ClaimTargetKind::Edge) {
+                const auto *edge = index_->edge(target.resource_id);
+                if (edge == nullptr) {
+                    return;
+                }
+
+                dp::Vector<ZonePolicy> zone_policies;
+                for (const auto *zone : index_->zones_of_edge(target.resource_id)) {
+                    if (zone != nullptr) {
+                        zone_policies.push_back(parse_zone_policy(zone->properties()));
+                    }
+                }
+                const auto semantics = derive_effective_edge_semantics(edge->properties, false, zone_policies);
+                if (semantics.blocked.value_or(false)) {
+                    diagnostics.push_back("edge is blocked by traffic policy");
+                }
+                if (semantics.lane_type.has_value() && semantics.lane_type.value() == "corridor") {
+                    diagnostics.push_back("edge is treated as a corridor");
+                }
+                if (semantics.waiting_allowed.has_value() && !semantics.waiting_allowed.value()) {
+                    diagnostics.push_back("edge does not allow waiting");
+                }
+                if (semantics.stop_allowed.has_value() && !semantics.stop_allowed.value()) {
+                    diagnostics.push_back("edge does not allow stopping");
+                }
+                if (semantics.schedule_window.has_value()) {
+                    diagnostics.push_back(dp::String{"edge schedule window="} + semantics.schedule_window.value());
+                }
+                if (semantics.speed_limit.has_value()) {
+                    diagnostics.push_back(dp::String{"edge speed limit="} +
+                                          dp::String{std::to_string(semantics.speed_limit.value())});
+                }
+            }
         }
         [[nodiscard]] static ClaimWindow lease_window(const Lease &lease) {
             ClaimWindow window{};

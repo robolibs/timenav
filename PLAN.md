@@ -1350,10 +1350,10 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] reflect real traffic semantics, not only simple exclusivity checks
-- [ ] improve denial/conflict explanations
+- [x] reflect real traffic semantics, not only simple exclusivity checks
+- [x] improve denial/conflict explanations
 - [ ] deepen capacity-limited resource handling
-- [ ] connect lease behavior more tightly to coordinator/scheduler expectations
+- [x] connect lease behavior more tightly to coordinator/scheduler expectations
 
 - [x] Slice 5.1: add `claim.hpp` with request, lease, and target types
 - [x] Slice 5.2: add `claim_manager.hpp` scaffold
@@ -1375,10 +1375,10 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] build a stronger time-scheduling model beyond simple window checks
+- [x] build a stronger time-scheduling model beyond simple window checks
 - [x] deepen priority/right-of-way behavior
-- [ ] add queueing and reservation-window logic
-- [ ] define richer robot progress/state lifecycle behavior
+- [x] add queueing and reservation-window logic
+- [x] define richer robot progress/state lifecycle behavior
 
 - [x] Slice 6.1: add `robot_state.hpp` with robot runtime state
 - [x] Slice 6.2: add `coordinator.hpp` scaffold
@@ -1509,26 +1509,26 @@ This section summarizes the major unfinished work that must still happen before 
 
 ### Scheduling
 
-- [ ] define an actual scheduling model, not only a route/window filter
-- [ ] define reservation windows over time for zones and edges
-- [ ] define queueing rules for waiting robots
-- [ ] define what happens when a robot misses its expected time slot
-- [ ] define how schedule conflict resolution interacts with replanning
+- [x] define an actual scheduling model, not only a route/window filter
+- [x] define reservation windows over time for zones and edges
+- [x] define queueing rules for waiting robots
+- [x] define what happens when a robot misses its expected time slot
+- [x] define how schedule conflict resolution interacts with replanning
 
 ### Traffic Rules
 
 - [x] define right-of-way rules beyond simple priority comparison
 - [x] fix bounded-capacity enforcement for shared zone and edge claims
-- [ ] define waiting/no-stop behavior on lanes and zones
-- [ ] define corridor semantics clearly
+- [x] define waiting/no-stop behavior on lanes and zones
+- [x] define corridor semantics clearly
 - [ ] define how blocked/restricted/slow policies affect planning vs claiming
 
 ### Claim / Lease Semantics
 
-- [ ] define claim target semantics precisely for zones, edges, and nodes
+- [x] define claim target semantics precisely for zones, edges, and nodes
 - [x] define richer denial reasons and operator/debug visibility
-- [ ] define lease refresh / extension behavior
-- [ ] define revoke behavior and required downstream reactions
+- [x] define lease refresh / extension behavior
+- [x] define revoke behavior and required downstream reactions
 - [x] fix rolling-horizon release/claim behavior to use per-step zone coverage instead of de-duplicated route zones
 - [x] clean requests and leases correctly on robot unregister/reset
 

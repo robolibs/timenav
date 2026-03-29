@@ -12,6 +12,8 @@ namespace timenav {
 
     enum class ClaimDecision { Grant, Deny };
 
+    enum class LeaseDisposition { Active, Released, Expired, Revoked };
+
     struct ClaimWindow {
         dp::Optional<dp::u64> start_tick;
         dp::Optional<dp::u64> end_tick;
@@ -41,7 +43,11 @@ namespace timenav {
         dp::Vector<ClaimTarget> targets;
         dp::Optional<dp::u64> granted_at_tick;
         dp::Optional<dp::u64> expires_at_tick;
+        dp::Optional<dp::u64> refreshed_at_tick;
         dp::Optional<dp::u64> released_at_tick;
+        dp::Optional<dp::u64> revoked_at_tick;
+        dp::Optional<dp::String> revoke_reason;
+        LeaseDisposition disposition = LeaseDisposition::Active;
         bool active = true;
     };
 

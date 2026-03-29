@@ -2,12 +2,362 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <unordered_set>
 
 #include "timenav/claim_manager.hpp"
 #include "timenav/robot_state.hpp"
 
 namespace timenav {
+
+    struct ClaimTargetSemantics {
+        ClaimTarget target{};
+        bool requires_claim = false;
+        bool waiting_allowed = true;
+        bool stop_allowed = true;
+        bool blocked = false;
+        bool corridor = false;
+        bool slowdown = false;
+        dp::Optional<dp::String> schedule_window;
+        dp::Optional<dp::String> access_group;
+    };
+
+    struct ScheduledTargetWindow {
+        ClaimTargetSemantics semantics{};
+        dp::u64 start_tick = 0;
+        dp::u64 end_tick = 0;
+    };
+
+    struct ScheduleConflict {
+        ClaimTarget target{};
+        dp::u64 blocking_until_tick = 0;
+        dp::Optional<ClaimId> conflicting_claim_id;
+        dp::Optional<LeaseId> conflicting_lease_id;
+        dp::Vector<dp::String> diagnostics;
+    };
+
+    enum class ScheduleDecisionKind { Proceed, Queue, Replan };
+
+    struct ScheduleDecision {
+        ScheduleDecisionKind kind = ScheduleDecisionKind::Proceed;
+        dp::u64 start_tick = 0;
+        dp::u64 queue_position = 0;
+        dp::Vector<ScheduleConflict> conflicts;
+        dp::Vector<dp::String> diagnostics;
+    };
+
+    inline ClaimTargetSemantics claim_target_semantics(const WorkspaceIndex &index, const ClaimTarget &target) {
+        ClaimTargetSemantics semantics{};
+        semantics.target = target;
+
+        if (target.kind == ClaimTargetKind::Zone) {
+            const auto *zone = index.zone(target.resource_id);
+            if (zone == nullptr) {
+                return semantics;
+            }
+
+            const auto policy = parse_zone_policy(zone->properties());
+            semantics.requires_claim = policy.requires_claim;
+            semantics.waiting_allowed = policy.waiting_allowed.value_or(true);
+            semantics.stop_allowed = policy.stop_allowed.value_or(!policy.blocked.value_or(false));
+            semantics.blocked = policy.blocked.value_or(false) || policy.blocks_entry_without_grant ||
+                                policy.blocks_traversal_without_grant;
+            semantics.corridor = policy.kind == ZonePolicyKind::Corridor;
+            semantics.slowdown = policy.kind == ZonePolicyKind::Slowdown ||
+                                 (policy.speed_limit.has_value() && policy.speed_limit.value() < 1.0);
+            semantics.schedule_window = policy.schedule_window;
+            semantics.access_group = policy.access_group;
+            return semantics;
+        }
+
+        if (target.kind == ClaimTargetKind::Edge) {
+            const auto *edge = index.edge(target.resource_id);
+            if (edge == nullptr) {
+                return semantics;
+            }
+
+            dp::Vector<ZonePolicy> zone_policies;
+            for (const auto *zone : index.zones_of_edge(target.resource_id)) {
+                if (zone != nullptr) {
+                    zone_policies.push_back(parse_zone_policy(zone->properties()));
+                }
+            }
+            const auto edge_semantics = derive_effective_edge_semantics(edge->properties, false, zone_policies);
+            semantics.requires_claim = edge_semantics.requires_claim.value_or(false);
+            semantics.waiting_allowed = edge_semantics.waiting_allowed.value_or(true);
+            semantics.stop_allowed = edge_semantics.stop_allowed.value_or(!edge_semantics.blocked.value_or(false));
+            semantics.blocked = edge_semantics.blocked.value_or(false);
+            semantics.corridor = edge_semantics.lane_type.has_value() && edge_semantics.lane_type.value() == "corridor";
+            semantics.slowdown = edge_semantics.speed_limit.has_value() && edge_semantics.speed_limit.value() < 1.0;
+            semantics.schedule_window = edge_semantics.schedule_window;
+            semantics.access_group = edge_semantics.access_group;
+            return semantics;
+        }
+
+        if (target.kind == ClaimTargetKind::Node) {
+            for (const auto *zone : index.zones_of_node(target.resource_id)) {
+                if (zone == nullptr) {
+                    continue;
+                }
+                const auto policy = parse_zone_policy(zone->properties());
+                semantics.requires_claim = semantics.requires_claim || policy.requires_claim;
+                semantics.waiting_allowed = semantics.waiting_allowed && policy.waiting_allowed.value_or(true);
+                semantics.stop_allowed = semantics.stop_allowed && policy.stop_allowed.value_or(true);
+                semantics.blocked = semantics.blocked || policy.blocked.value_or(false) ||
+                                    policy.blocks_entry_without_grant || policy.blocks_traversal_without_grant;
+                semantics.corridor = semantics.corridor || policy.kind == ZonePolicyKind::Corridor;
+                semantics.slowdown = semantics.slowdown || policy.kind == ZonePolicyKind::Slowdown ||
+                                     (policy.speed_limit.has_value() && policy.speed_limit.value() < 1.0);
+                if (!semantics.schedule_window.has_value() && policy.schedule_window.has_value()) {
+                    semantics.schedule_window = policy.schedule_window;
+                }
+                if (!semantics.access_group.has_value() && policy.access_group.has_value()) {
+                    semantics.access_group = policy.access_group;
+                }
+            }
+        }
+
+        return semantics;
+    }
+
+    inline dp::Vector<ScheduledTargetWindow> scheduled_target_windows_from_route(const WorkspaceIndex &index,
+                                                                                 const RoutePlan &route_plan,
+                                                                                 dp::u64 start_tick = 0,
+                                                                                 dp::f64 ticks_per_cost_unit = 1.0) {
+        dp::Vector<ScheduledTargetWindow> windows;
+        if (validate_route_plan_shape(route_plan).is_err()) {
+            return windows;
+        }
+
+        auto tick_at_step = [&](dp::u64 step_index) {
+            if (step_index >= route_plan.steps.size()) {
+                return start_tick;
+            }
+            const auto offset = static_cast<dp::u64>(
+                std::max<dp::f64>(0.0, std::ceil(route_plan.steps[step_index].cumulative_cost * ticks_per_cost_unit)));
+            return start_tick + offset;
+        };
+
+        for (dp::u64 i = 0; i < route_plan.traversed_node_ids.size(); ++i) {
+            const auto window_start = tick_at_step(i);
+            const auto next_tick = i + 1 < route_plan.steps.size() ? tick_at_step(i + 1) : window_start;
+            const auto window_end = std::max(window_start, next_tick);
+
+            ScheduledTargetWindow node_window{};
+            node_window.semantics =
+                claim_target_semantics(index, ClaimTarget{ClaimTargetKind::Node, route_plan.traversed_node_ids[i]});
+            node_window.start_tick = window_start;
+            node_window.end_tick = window_end;
+            windows.push_back(node_window);
+
+            if (i < route_plan.traversed_node_zone_ids.size()) {
+                for (const auto &zone_id : route_plan.traversed_node_zone_ids[i]) {
+                    ScheduledTargetWindow zone_window{};
+                    zone_window.semantics = claim_target_semantics(index, ClaimTarget{ClaimTargetKind::Zone, zone_id});
+                    zone_window.start_tick = window_start;
+                    zone_window.end_tick = window_end;
+                    windows.push_back(zone_window);
+                }
+            }
+
+            if (i < route_plan.traversed_edge_ids.size()) {
+                ScheduledTargetWindow edge_window{};
+                edge_window.semantics =
+                    claim_target_semantics(index, ClaimTarget{ClaimTargetKind::Edge, route_plan.traversed_edge_ids[i]});
+                edge_window.start_tick = window_start;
+                edge_window.end_tick = std::max(window_start, tick_at_step(i + 1));
+                windows.push_back(edge_window);
+
+                if (i < route_plan.traversed_edge_zone_ids.size()) {
+                    for (const auto &zone_id : route_plan.traversed_edge_zone_ids[i]) {
+                        ScheduledTargetWindow zone_window{};
+                        zone_window.semantics =
+                            claim_target_semantics(index, ClaimTarget{ClaimTargetKind::Zone, zone_id});
+                        zone_window.start_tick = edge_window.start_tick;
+                        zone_window.end_tick = edge_window.end_tick;
+                        windows.push_back(zone_window);
+                    }
+                }
+            }
+        }
+
+        return windows;
+    }
+
+    inline bool claim_target_windows_overlap(const ClaimTarget &lhs, const ClaimWindow &lhs_window,
+                                             const ClaimTarget &rhs, const ClaimWindow &rhs_window,
+                                             const WorkspaceIndex *index = nullptr) {
+        const auto lhs_start = lhs_window.start_tick.value_or(0);
+        const auto rhs_start = rhs_window.start_tick.value_or(0);
+        const auto lhs_end = lhs_window.end_tick.value_or(std::numeric_limits<dp::u64>::max());
+        const auto rhs_end = rhs_window.end_tick.value_or(std::numeric_limits<dp::u64>::max());
+        if (!(lhs_start <= rhs_end && rhs_start <= lhs_end)) {
+            return false;
+        }
+
+        if (lhs.kind != rhs.kind) {
+            return false;
+        }
+        if (lhs.resource_id == rhs.resource_id) {
+            return true;
+        }
+        if (lhs.kind != ClaimTargetKind::Zone || index == nullptr) {
+            return false;
+        }
+
+        if (const auto *lhs_zone = index->zone(lhs.resource_id); lhs_zone != nullptr) {
+            for (const auto *ancestor : index->ancestor_zones(lhs.resource_id)) {
+                if (ancestor != nullptr && ancestor->id() == rhs.resource_id) {
+                    return true;
+                }
+            }
+        }
+        if (const auto *rhs_zone = index->zone(rhs.resource_id); rhs_zone != nullptr) {
+            for (const auto *ancestor : index->ancestor_zones(rhs.resource_id)) {
+                if (ancestor != nullptr && ancestor->id() == lhs.resource_id) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    inline ScheduleDecision schedule_route_request(const WorkspaceIndex &index, const ClaimManager &claim_manager,
+                                                   const ClaimRequest &request, const RoutePlan &route_plan,
+                                                   dp::u64 start_tick = 0, dp::f64 ticks_per_cost_unit = 1.0) {
+        ScheduleDecision decision{};
+        decision.start_tick = start_tick;
+
+        const auto windows = scheduled_target_windows_from_route(index, route_plan, start_tick, ticks_per_cost_unit);
+        dp::u64 latest_blocking_tick = start_tick;
+
+        auto add_conflict = [&](const ClaimTarget &target, dp::u64 blocking_until_tick,
+                                dp::Optional<ClaimId> conflicting_claim_id, dp::Optional<LeaseId> conflicting_lease_id,
+                                const ClaimTargetSemantics &semantics, dp::String source) {
+            ScheduleConflict conflict{};
+            conflict.target = target;
+            conflict.blocking_until_tick = blocking_until_tick;
+            conflict.conflicting_claim_id = conflicting_claim_id;
+            conflict.conflicting_lease_id = conflicting_lease_id;
+            conflict.diagnostics.push_back(dp::String{"schedule conflict with "} + source);
+            if (semantics.corridor) {
+                conflict.diagnostics.push_back("corridor resources cannot be used for side waiting");
+            }
+            if (!semantics.waiting_allowed) {
+                conflict.diagnostics.push_back("waiting is not allowed on the blocking resource");
+            }
+            if (!semantics.stop_allowed) {
+                conflict.diagnostics.push_back("stopping is not allowed on the blocking resource");
+            }
+            if (semantics.blocked) {
+                conflict.diagnostics.push_back("blocking resource is hard-restricted");
+            }
+            if (semantics.slowdown) {
+                conflict.diagnostics.push_back("blocking resource applies slowdown semantics");
+            }
+            if (semantics.schedule_window.has_value()) {
+                conflict.diagnostics.push_back(dp::String{"blocking schedule window="} +
+                                               semantics.schedule_window.value());
+            }
+            decision.conflicts.push_back(conflict);
+            latest_blocking_tick = std::max(latest_blocking_tick, blocking_until_tick);
+        };
+
+        for (const auto &window : windows) {
+            ClaimWindow requested_window{};
+            requested_window.start_tick = window.start_tick;
+            requested_window.end_tick = window.end_tick;
+
+            for (const auto &active_request : claim_manager.requests()) {
+                if (active_request.id == request.id) {
+                    continue;
+                }
+                for (const auto &target : active_request.targets) {
+                    if (!claim_target_windows_overlap(window.semantics.target, requested_window, target,
+                                                      active_request.window, claim_manager.index())) {
+                        continue;
+                    }
+                    add_conflict(window.semantics.target, active_request.window.end_tick.value_or(window.end_tick),
+                                 active_request.id, dp::nullopt, window.semantics, "active request");
+                    break;
+                }
+            }
+
+            for (const auto &lease : claim_manager.leases()) {
+                if (!lease.active) {
+                    continue;
+                }
+                ClaimWindow lease_window{};
+                lease_window.start_tick = lease.granted_at_tick;
+                lease_window.end_tick = lease.expires_at_tick;
+                for (const auto &target : lease.targets) {
+                    if (!claim_target_windows_overlap(window.semantics.target, requested_window, target, lease_window,
+                                                      claim_manager.index())) {
+                        continue;
+                    }
+                    add_conflict(window.semantics.target, lease.expires_at_tick.value_or(window.end_tick), dp::nullopt,
+                                 lease.id, window.semantics, "active lease");
+                    break;
+                }
+            }
+        }
+
+        if (decision.conflicts.empty()) {
+            decision.kind = ScheduleDecisionKind::Proceed;
+            decision.diagnostics.push_back("route can proceed within the requested reservation window");
+            return decision;
+        }
+
+        bool queueable = true;
+        for (const auto &conflict : decision.conflicts) {
+            const auto semantics = claim_target_semantics(index, conflict.target);
+            if (semantics.blocked || semantics.corridor || !semantics.waiting_allowed || !semantics.stop_allowed) {
+                queueable = false;
+                break;
+            }
+        }
+
+        if (!queueable) {
+            decision.kind = ScheduleDecisionKind::Replan;
+            decision.diagnostics.push_back("schedule conflicts require replanning instead of queuing");
+            return decision;
+        }
+
+        decision.kind = ScheduleDecisionKind::Queue;
+        decision.start_tick = latest_blocking_tick + 1;
+        decision.queue_position = decision.conflicts.size() + 1;
+        decision.diagnostics.push_back("route should wait for an available reservation window");
+        return decision;
+    }
+
+    inline bool robot_missed_schedule_slot(const RobotState &state, dp::u64 current_tick, dp::u64 grace_ticks = 0) {
+        return state.scheduled_start_tick.has_value() &&
+               current_tick > state.scheduled_start_tick.value() + grace_ticks &&
+               state.progress_state != RobotProgressState::FollowingRoute &&
+               state.progress_state != RobotProgressState::Idle;
+    }
+
+    inline void apply_schedule_decision(RobotState &state, const ScheduleDecision &decision, dp::u64 updated_at_tick) {
+        state.updated_at_tick = updated_at_tick;
+        state.scheduled_start_tick = decision.start_tick;
+        state.wait_ticks = decision.start_tick > updated_at_tick ? decision.start_tick - updated_at_tick : 0;
+        state.needs_replan = decision.kind == ScheduleDecisionKind::Replan;
+        if (decision.kind == ScheduleDecisionKind::Proceed) {
+            state.progress_state =
+                state.route_plan.has_value() ? RobotProgressState::FollowingRoute : RobotProgressState::Idle;
+            state.hold_reason = dp::nullopt;
+            return;
+        }
+        if (decision.kind == ScheduleDecisionKind::Queue) {
+            state.progress_state = RobotProgressState::Queued;
+            state.hold_reason = "queued_for_reservation_window";
+            return;
+        }
+
+        state.progress_state = RobotProgressState::Replanning;
+        state.hold_reason = "schedule_conflict_requires_replan";
+    }
 
     inline dp::u64 route_progress_index(const RobotState &state) {
         if (!state.route_plan.has_value()) {
@@ -436,9 +786,13 @@ namespace timenav {
                             ? RobotProgressState::Idle
                             : RobotProgressState::FollowingRoute;
                     state->hold_reason = dp::nullopt;
+                    state->needs_replan = false;
+                    state->wait_ticks = 0;
                 }
             } else if (current_edge_id.has_value()) {
                 state->progress_state = RobotProgressState::FollowingRoute;
+                state->needs_replan = false;
+                state->wait_ticks = 0;
             } else {
                 state->progress_state = RobotProgressState::Waiting;
             }
@@ -455,6 +809,11 @@ namespace timenav {
             state->route_plan = route_plan;
             state->horizon = horizon;
             state->next_route_step_index = 0;
+            state->scheduled_start_tick = updated_at_tick;
+            state->reserved_until_tick =
+                updated_at_tick + static_cast<dp::u64>(std::max<dp::f64>(0.0, std::ceil(route_plan.total_cost)));
+            state->wait_ticks = 0;
+            state->needs_replan = false;
             state->progress_state =
                 route_plan.traversed_node_ids.empty() ? RobotProgressState::Idle : RobotProgressState::FollowingRoute;
             state->updated_at_tick = updated_at_tick;
@@ -485,6 +844,83 @@ namespace timenav {
                 state->last_claim_tick = state->updated_at_tick;
             }
             return released;
+        }
+        [[nodiscard]] ScheduleDecision schedule_robot_route(RobotId robot_id, ClaimId claim_id, dp::u64 start_tick,
+                                                            dp::f64 ticks_per_cost_unit = 1.0,
+                                                            ClaimAccessMode access_mode = ClaimAccessMode::Exclusive) {
+            const auto *state = find_robot_state(robot_id);
+            if (state == nullptr || !state->route_plan.has_value() || index_ == nullptr) {
+                ScheduleDecision decision{};
+                decision.kind = ScheduleDecisionKind::Replan;
+                decision.start_tick = start_tick;
+                decision.diagnostics.push_back("robot does not have a schedulable route");
+                return decision;
+            }
+
+            auto request = claim_request_from_route(claim_id, robot_id, state->mission_id, *state->route_plan,
+                                                    start_tick, ticks_per_cost_unit, access_mode);
+            const auto decision = schedule_route_request(*index_, claim_manager_, request, *state->route_plan,
+                                                         start_tick, ticks_per_cost_unit);
+            if (auto *mutable_state = find_robot_state(robot_id); mutable_state != nullptr) {
+                mutable_state->reserved_until_tick = request.window.end_tick;
+                apply_schedule_decision(*mutable_state, decision, start_tick);
+            }
+            return decision;
+        }
+        [[nodiscard]] dp::u64 refresh_robot_leases(RobotId robot_id, dp::u64 refreshed_at_tick,
+                                                   dp::u64 extension_ticks = 0) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return 0;
+            }
+
+            dp::u64 refreshed = 0;
+            for (const auto lease_id : state->active_lease_ids) {
+                const auto *lease = claim_manager_.find_lease(lease_id);
+                if (lease == nullptr) {
+                    continue;
+                }
+                const auto new_expiry = lease->expires_at_tick.has_value()
+                                            ? dp::Optional<dp::u64>{lease->expires_at_tick.value() + extension_ticks}
+                                            : dp::nullopt;
+                if (claim_manager_.refresh_lease(lease_id, refreshed_at_tick, new_expiry)) {
+                    ++refreshed;
+                }
+            }
+            state->last_claim_tick = refreshed_at_tick;
+            return refreshed;
+        }
+        [[nodiscard]] dp::u64 revoke_robot_leases(RobotId robot_id, dp::String reason, dp::u64 revoked_at_tick) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return 0;
+            }
+
+            dp::u64 revoked = 0;
+            for (const auto lease_id : state->active_lease_ids) {
+                if (claim_manager_.revoke_lease(lease_id, reason, revoked_at_tick)) {
+                    ++revoked;
+                }
+            }
+            state->active_lease_ids.clear();
+            state->progress_state = RobotProgressState::Replanning;
+            state->hold_reason = reason;
+            state->needs_replan = revoked > 0;
+            state->updated_at_tick = revoked_at_tick;
+            return revoked;
+        }
+        [[nodiscard]] bool handle_missed_schedule_slot(RobotId robot_id, dp::u64 current_tick,
+                                                       dp::u64 grace_ticks = 0) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr || !robot_missed_schedule_slot(*state, current_tick, grace_ticks)) {
+                return false;
+            }
+
+            state->progress_state = RobotProgressState::Replanning;
+            state->hold_reason = "missed_reservation_window";
+            state->needs_replan = true;
+            state->updated_at_tick = current_tick;
+            return true;
         }
 
       private:

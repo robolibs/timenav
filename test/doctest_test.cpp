@@ -1263,6 +1263,185 @@ TEST_CASE("coordinator regression covers rolling claims archived releases and pa
           timenav::ArbitrationDecision::Proceed);
 }
 
+TEST_CASE("scheduled target windows derive timed reservation windows from route steps") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes{fixture.node_a_id, fixture.node_b_id, fixture.node_c_id};
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    const auto windows = timenav::scheduled_target_windows_from_route(index, route_plan.value(), 10, 2.0);
+
+    REQUIRE(windows.size() >= 7);
+    CHECK(windows[0].start_tick == 10);
+    CHECK(windows[0].end_tick == 12);
+    bool saw_zone_window = false;
+    bool saw_edge_window = false;
+    for (const auto &window : windows) {
+        if (window.semantics.target.kind == timenav::ClaimTargetKind::Zone) {
+            saw_zone_window = true;
+        }
+        if (window.semantics.target.kind == timenav::ClaimTargetKind::Edge && window.start_tick == 10 &&
+            window.end_tick == 12) {
+            saw_edge_window = true;
+        }
+    }
+    CHECK(saw_zone_window);
+    CHECK(saw_edge_window);
+}
+
+TEST_CASE("scheduler queues routes when reservation windows overlap on waitable resources") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.root_zone().children()[0].set_property("traffic.waiting_allowed", "true");
+    fixture.workspace.root_zone().children()[0].set_property("traffic.stop_allowed", "true");
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager claim_manager{index};
+
+    dp::Vector<zoneout::UUID> route_nodes{fixture.node_a_id, fixture.node_b_id, fixture.node_c_id};
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::ClaimRequest blocking{};
+    blocking.id = timenav::ClaimId{3001};
+    blocking.window.start_tick = 5;
+    blocking.window.end_tick = 15;
+    blocking.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, fixture.workspace.root_zone().children()[0].id()});
+    claim_manager.add_request(blocking);
+
+    const auto request =
+        timenav::claim_request_from_route(timenav::ClaimId{3002}, timenav::RobotId{42}, timenav::MissionId{7},
+                                          route_plan.value(), 10, 1.0, timenav::ClaimAccessMode::Exclusive);
+    const auto decision =
+        timenav::schedule_route_request(index, claim_manager, request, route_plan.value(), 10, 1.0);
+
+    CHECK(decision.kind == timenav::ScheduleDecisionKind::Queue);
+    CHECK(decision.start_tick == 16);
+    CHECK(decision.queue_position >= 2);
+    CHECK_FALSE(decision.conflicts.empty());
+}
+
+TEST_CASE("scheduler forces replanning for corridor and no-stop conflicts") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.root_zone().children()[0].set_property("traffic.mode", "corridor");
+    fixture.workspace.root_zone().children()[0].set_property("traffic.waiting_allowed", "false");
+    fixture.workspace.root_zone().children()[0].set_property("traffic.stop_allowed", "false");
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager claim_manager{index};
+    dp::Vector<zoneout::UUID> route_nodes{fixture.node_a_id, fixture.node_b_id, fixture.node_c_id};
+    const auto route = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route.is_ok());
+
+    timenav::ClaimRequest blocking{};
+    blocking.id = timenav::ClaimId{3011};
+    blocking.window.start_tick = 0;
+    blocking.window.end_tick = 20;
+    blocking.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, fixture.workspace.root_zone().children()[0].id()});
+    claim_manager.add_request(blocking);
+
+    const auto request =
+        timenav::claim_request_from_route(timenav::ClaimId{3012}, timenav::RobotId{52}, timenav::MissionId{8},
+                                          route.value(), 5, 1.0, timenav::ClaimAccessMode::Exclusive);
+    const auto decision = timenav::schedule_route_request(index, claim_manager, request, route.value(), 5, 1.0);
+
+    CHECK(decision.kind == timenav::ScheduleDecisionKind::Replan);
+    CHECK_FALSE(decision.conflicts.empty());
+    CHECK(decision.conflicts.front().diagnostics[0].find("schedule conflict") != dp::String::npos);
+}
+
+TEST_CASE("coordinator scheduling updates queued and replanning robot lifecycle state") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.root_zone().children()[0].set_property("traffic.waiting_allowed", "true");
+    fixture.workspace.root_zone().children()[0].set_property("traffic.stop_allowed", "true");
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    dp::Vector<zoneout::UUID> route_nodes{fixture.node_a_id, fixture.node_b_id, fixture.node_c_id};
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState robot{};
+    robot.robot_id = timenav::RobotId{77};
+    robot.route_plan = route_plan.value();
+    robot.mission_id = timenav::MissionId{12};
+    coordinator.register_robot(robot);
+
+    timenav::ClaimRequest blocking{};
+    blocking.id = timenav::ClaimId{3101};
+    blocking.window.start_tick = 3;
+    blocking.window.end_tick = 8;
+    blocking.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, fixture.workspace.root_zone().children()[0].id()});
+    coordinator.claim_manager().add_request(blocking);
+
+    const auto queued = coordinator.schedule_robot_route(timenav::RobotId{77}, timenav::ClaimId{3102}, 5);
+    CHECK(queued.kind == timenav::ScheduleDecisionKind::Queue);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{77}) != nullptr);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{77})->progress_state == timenav::RobotProgressState::Queued);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{77})->wait_ticks == queued.start_tick - 5);
+
+    coordinator.find_robot_state(timenav::RobotId{77})->scheduled_start_tick = 6;
+    CHECK(coordinator.handle_missed_schedule_slot(timenav::RobotId{77}, 9, 1));
+    CHECK(coordinator.find_robot_state(timenav::RobotId{77})->progress_state ==
+          timenav::RobotProgressState::Replanning);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{77})->needs_replan);
+}
+
+TEST_CASE("claim manager refreshes and revokes leases with archived disposition") {
+    timenav::ClaimManager manager{};
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{3201};
+    lease.expires_at_tick = 10;
+    manager.add_lease(lease);
+
+    CHECK(manager.refresh_lease(timenav::LeaseId{3201}, 7, 15));
+    REQUIRE(manager.find_lease(timenav::LeaseId{3201}) != nullptr);
+    REQUIRE(manager.find_lease(timenav::LeaseId{3201})->refreshed_at_tick.has_value());
+    CHECK(manager.find_lease(timenav::LeaseId{3201})->refreshed_at_tick.value() == 7);
+    REQUIRE(manager.find_lease(timenav::LeaseId{3201})->expires_at_tick.has_value());
+    CHECK(manager.find_lease(timenav::LeaseId{3201})->expires_at_tick.value() == 15);
+
+    CHECK(manager.revoke_lease(timenav::LeaseId{3201}, "operator_replan", 9));
+    CHECK(manager.find_lease(timenav::LeaseId{3201}) == nullptr);
+    REQUIRE(manager.find_released_lease(timenav::LeaseId{3201}) != nullptr);
+    CHECK(manager.find_released_lease(timenav::LeaseId{3201})->disposition == timenav::LeaseDisposition::Revoked);
+    REQUIRE(manager.find_released_lease(timenav::LeaseId{3201})->revoke_reason.has_value());
+    CHECK(manager.find_released_lease(timenav::LeaseId{3201})->revoke_reason.value() == "operator_replan");
+}
+
+TEST_CASE("coordinator refreshes and revokes robot leases for scheduling reactions") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    timenav::RobotState robot{};
+    robot.robot_id = timenav::RobotId{88};
+    robot.active_lease_ids = {timenav::LeaseId{3301}, timenav::LeaseId{3302}};
+    coordinator.register_robot(robot);
+
+    timenav::Lease first{};
+    first.id = timenav::LeaseId{3301};
+    first.expires_at_tick = 10;
+    coordinator.claim_manager().add_lease(first);
+    timenav::Lease second{};
+    second.id = timenav::LeaseId{3302};
+    second.expires_at_tick = 12;
+    coordinator.claim_manager().add_lease(second);
+
+    CHECK(coordinator.refresh_robot_leases(timenav::RobotId{88}, 6, 5) == 2);
+    REQUIRE(coordinator.claim_manager().find_lease(timenav::LeaseId{3301}) != nullptr);
+    CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{3301})->expires_at_tick.value() == 15);
+
+    CHECK(coordinator.revoke_robot_leases(timenav::RobotId{88}, "reservation_conflict", 8) == 2);
+    CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{3301}) == nullptr);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{88}) != nullptr);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{88})->progress_state ==
+          timenav::RobotProgressState::Replanning);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{88})->active_lease_ids.empty());
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
