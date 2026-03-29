@@ -333,6 +333,39 @@ TEST_CASE("zone policy merge rules honor dominance capacity and child overrides"
     CHECK(restricted.blocks_traversal_without_grant);
 }
 
+TEST_CASE("effective edge semantics combine structural and zone-derived rules") {
+    const std::unordered_map<std::string, std::string> edge_properties = {
+        {"traffic.speed_limit", "2.5"},
+        {"traffic.capacity", "3"},
+        {"traffic.robot_class", "tow"},
+        {"traffic.no_stop", "false"},
+    };
+
+    timenav::ZonePolicy zone_a{};
+    zone_a.speed_limit = 1.0;
+    zone_a.capacity = 2;
+
+    timenav::ZonePolicy zone_b{};
+    zone_b.kind = timenav::ZonePolicyKind::NoStop;
+    zone_b.robot_class = dp::String{"forklift"};
+
+    dp::Vector<timenav::ZonePolicy> zone_policies;
+    zone_policies.push_back(zone_a);
+    zone_policies.push_back(zone_b);
+
+    const auto semantics = timenav::derive_effective_edge_semantics(edge_properties, true, zone_policies);
+
+    CHECK(semantics.directed);
+    REQUIRE(semantics.speed_limit.has_value());
+    CHECK(semantics.speed_limit.value() == doctest::Approx(1.0));
+    REQUIRE(semantics.capacity.has_value());
+    CHECK(semantics.capacity.value() == 2);
+    REQUIRE(semantics.robot_class.has_value());
+    CHECK(semantics.robot_class.value() == "tow");
+    REQUIRE(semantics.no_stop.has_value());
+    CHECK(semantics.no_stop.value());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};

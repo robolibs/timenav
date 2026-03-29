@@ -445,4 +445,40 @@ namespace timenav {
         return merged;
     }
 
+    inline EdgeTrafficSemantics
+    derive_effective_edge_semantics(const std::unordered_map<std::string, std::string> &properties, bool directed,
+                                    const dp::Vector<ZonePolicy> &zone_policies = {}) {
+        auto semantics = parse_edge_traffic_semantics(properties, directed);
+        semantics.directed = directed;
+
+        for (const auto &zone_policy : zone_policies) {
+            if (zone_policy.speed_limit.has_value()) {
+                if (!semantics.speed_limit.has_value()) {
+                    semantics.speed_limit = zone_policy.speed_limit;
+                } else {
+                    semantics.speed_limit = std::min(semantics.speed_limit.value(), zone_policy.speed_limit.value());
+                }
+            }
+
+            if (zone_policy.kind == ZonePolicyKind::CapacityLimited || zone_policy.capacity != 1) {
+                if (!semantics.capacity.has_value()) {
+                    semantics.capacity = zone_policy.capacity;
+                } else {
+                    semantics.capacity = std::min(semantics.capacity.value(), zone_policy.capacity);
+                }
+            }
+
+            if (!semantics.robot_class.has_value() && zone_policy.robot_class.has_value()) {
+                semantics.robot_class = zone_policy.robot_class;
+            }
+
+            if (zone_policy.kind == ZonePolicyKind::NoStop || zone_policy.blocked.value_or(false) ||
+                zone_policy.kind == ZonePolicyKind::Restricted) {
+                semantics.no_stop = true;
+            }
+        }
+
+        return semantics;
+    }
+
 } // namespace timenav
