@@ -26,7 +26,7 @@ namespace timenav {
         }
 
         void add_request(const ClaimRequest &request) { upsert_request(request); }
-        void add_lease(const Lease &lease) { active_leases_.push_back(lease); }
+        void add_lease(const Lease &lease) { upsert_lease(lease); }
         void upsert_request(const ClaimRequest &request) {
             for (auto &active_request : active_requests_) {
                 if (active_request.id == request.id) {
@@ -41,6 +41,26 @@ namespace timenav {
             for (auto it = active_requests_.begin(); it != active_requests_.end(); ++it) {
                 if (it->id == id) {
                     active_requests_.erase(it);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        void upsert_lease(const Lease &lease) {
+            for (auto &active_lease : active_leases_) {
+                if (active_lease.id == lease.id) {
+                    active_lease = lease;
+                    return;
+                }
+            }
+
+            active_leases_.push_back(lease);
+        }
+        [[nodiscard]] bool remove_lease(LeaseId id) {
+            for (auto it = active_leases_.begin(); it != active_leases_.end(); ++it) {
+                if (it->id == id) {
+                    active_leases_.erase(it);
                     return true;
                 }
             }
@@ -89,6 +109,25 @@ namespace timenav {
             return nullptr;
         }
         [[nodiscard]] bool has_lease(LeaseId id) const noexcept { return find_lease(id) != nullptr; }
+        [[nodiscard]] dp::Vector<const Lease *> leases_for_robot(RobotId robot_id) const {
+            dp::Vector<const Lease *> leases;
+            for (const auto &lease : active_leases_) {
+                if (lease.robot_id == robot_id) {
+                    leases.push_back(&lease);
+                }
+            }
+
+            return leases;
+        }
+        [[nodiscard]] const Lease *lease_for_claim(ClaimId claim_id) const noexcept {
+            for (const auto &lease : active_leases_) {
+                if (lease.claim_id == claim_id) {
+                    return &lease;
+                }
+            }
+
+            return nullptr;
+        }
 
         [[nodiscard]] static bool zone_claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
             return target_kind_compatible(lhs, rhs, ClaimTargetKind::Zone);

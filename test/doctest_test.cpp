@@ -839,6 +839,34 @@ TEST_CASE("claim manager stores granted leases") {
     CHECK(manager.find_lease(timenav::LeaseId{99}) == nullptr);
 }
 
+TEST_CASE("claim manager upserts and indexes leases by robot and claim") {
+    timenav::ClaimManager manager{};
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{511};
+    lease.claim_id = timenav::ClaimId{411};
+    lease.robot_id = timenav::RobotId{17};
+    lease.expires_at_tick = 20;
+    manager.add_lease(lease);
+
+    timenav::Lease updated = lease;
+    updated.expires_at_tick = 45;
+    updated.granted_at_tick = 12;
+    manager.upsert_lease(updated);
+
+    CHECK(manager.lease_count() == 1);
+    REQUIRE(manager.find_lease(timenav::LeaseId{511}) != nullptr);
+    REQUIRE(manager.find_lease(timenav::LeaseId{511})->expires_at_tick.has_value());
+    CHECK(manager.find_lease(timenav::LeaseId{511})->expires_at_tick.value() == 45);
+    REQUIRE(manager.lease_for_claim(timenav::ClaimId{411}) != nullptr);
+    CHECK(manager.lease_for_claim(timenav::ClaimId{411})->id == timenav::LeaseId{511});
+    REQUIRE(manager.leases_for_robot(timenav::RobotId{17}).size() == 1);
+    CHECK(manager.leases_for_robot(timenav::RobotId{17})[0]->id == timenav::LeaseId{511});
+    CHECK(manager.remove_lease(timenav::LeaseId{511}));
+    CHECK_FALSE(manager.remove_lease(timenav::LeaseId{511}));
+    CHECK(manager.lease_count() == 0);
+}
+
 TEST_CASE("zone claim compatibility distinguishes overlapping exclusive and shared access") {
     const auto shared_zone = zoneout::UUID("30303030-3030-4030-8030-303030303030");
     const auto other_zone = zoneout::UUID("40404040-4040-4040-8040-404040404040");
