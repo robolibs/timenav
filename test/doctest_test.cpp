@@ -1526,6 +1526,44 @@ TEST_CASE("policy layer regression covers parsing validation inheritance and der
     CHECK_FALSE(effective_edge.no_stop.value());
 }
 
+TEST_CASE("policy aliases and explicit capacity flags stay stable across parsing and merge") {
+    const std::unordered_map<std::string, std::string> zone_properties = {
+        {"traffic.mode", "shared"},
+        {"traffic.max_occupancy", "6"},
+        {"traffic.no_stop", "true"},
+    };
+    const std::unordered_map<std::string, std::string> edge_properties = {
+        {"traffic.lane_kind", "service"},
+        {"traffic.max_occupancy", "4"},
+        {"traffic.direction", "westbound"},
+    };
+
+    const auto zone_policy = timenav::parse_zone_policy(zone_properties);
+    const auto edge_semantics = timenav::parse_edge_traffic_semantics(edge_properties, false);
+
+    timenav::ZonePolicy inherited_parent{};
+    timenav::ZonePolicy explicit_child = zone_policy;
+    const auto merged = timenav::merge_zone_policy(inherited_parent, explicit_child);
+
+    CHECK(zone_policy.kind == timenav::ZonePolicyKind::NoStop);
+    CHECK(zone_policy.capacity == 6);
+    CHECK(zone_policy.capacity_is_explicit);
+    REQUIRE(zone_policy.stop_allowed.has_value());
+    CHECK_FALSE(zone_policy.stop_allowed.value());
+
+    REQUIRE(edge_semantics.lane_type.has_value());
+    CHECK(edge_semantics.lane_type.value() == "service");
+    REQUIRE(edge_semantics.capacity.has_value());
+    CHECK(edge_semantics.capacity.value() == 4);
+    CHECK(edge_semantics.capacity_is_explicit);
+    REQUIRE(edge_semantics.preferred_direction.has_value());
+    CHECK(edge_semantics.preferred_direction.value() == "westbound");
+
+    CHECK(merged.capacity == 6);
+    CHECK(merged.capacity_is_explicit);
+    CHECK(merged.kind == timenav::ZonePolicyKind::NoStop);
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};

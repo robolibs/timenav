@@ -317,6 +317,16 @@ namespace timenav {
             }
         }
 
+        if (policy.blocked.value_or(false)) {
+            policy.kind = ZonePolicyKind::Restricted;
+            policy.blocks_entry_without_grant = true;
+            policy.blocks_traversal_without_grant = true;
+        } else if (policy.replan_trigger.value_or(false)) {
+            policy.kind = ZonePolicyKind::Replanning;
+        } else if (policy.stop_allowed.has_value() && !policy.stop_allowed.value()) {
+            policy.kind = ZonePolicyKind::NoStop;
+        }
+
         return policy;
     }
 
