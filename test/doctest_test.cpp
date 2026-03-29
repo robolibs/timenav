@@ -1360,6 +1360,46 @@ TEST_CASE("planner regression covers blocked and allowed alternative routes") {
     }
 }
 
+TEST_CASE("planner regression keeps route details aligned across fixture variants") {
+    {
+        const auto fixture = make_route_choice_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+        const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, false);
+
+        REQUIRE(result.plan.has_value());
+        REQUIRE(result.plan->steps.size() == 3);
+        CHECK(result.plan->steps[1].incoming_edge_id.value() == fixture.edge_ac_id);
+        CHECK(result.plan->steps[2].incoming_edge_id.value() == fixture.edge_cd_id);
+        CHECK(result.plan->steps.back().cumulative_cost == doctest::Approx(result.plan->total_cost));
+        for (const auto &edge_id : result.plan->traversed_edge_ids) {
+            CHECK(edge_id != fixture.edge_bd_id);
+        }
+    }
+
+    {
+        const auto fixture = make_directional_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+        const auto reverse_result = timenav::plan_route(index, fixture.node_b_id, fixture.node_a_id, false);
+
+        CHECK_FALSE(reverse_result.plan.has_value());
+        REQUIRE(reverse_result.failure.has_value());
+        CHECK(reverse_result.failure->kind == timenav::RouteFailureKind::Unreachable);
+        CHECK(reverse_result.failure->blocked_edge_ids.empty());
+    }
+
+    {
+        const auto fixture = make_blocked_only_route_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+        const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, false);
+
+        CHECK_FALSE(result.plan.has_value());
+        REQUIRE(result.failure.has_value());
+        CHECK(result.failure->kind == timenav::RouteFailureKind::PolicyBlocked);
+        CHECK_FALSE(result.failure->blocked_edge_ids.empty());
+        CHECK_FALSE(result.failure->reachable_node_ids.empty());
+    }
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 
