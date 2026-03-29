@@ -21,10 +21,12 @@ namespace timenav {
         [[nodiscard]] dp::u64 lease_count() const noexcept { return active_leases_.size(); }
         [[nodiscard]] const dp::Vector<ClaimRequest> &requests() const noexcept { return active_requests_; }
         [[nodiscard]] const dp::Vector<Lease> &leases() const noexcept { return active_leases_; }
+        [[nodiscard]] const dp::Vector<Lease> &released_leases() const noexcept { return released_leases_; }
         void bind_index(const WorkspaceIndex &index) noexcept { index_ = &index; }
         void clear() {
             active_requests_.clear();
             active_leases_.clear();
+            released_leases_.clear();
         }
 
         void add_request(const ClaimRequest &request) { upsert_request(request); }
@@ -69,9 +71,13 @@ namespace timenav {
 
             return false;
         }
-        [[nodiscard]] bool release_lease(LeaseId id) {
+        [[nodiscard]] bool release_lease(LeaseId id, dp::Optional<dp::u64> released_at_tick = dp::nullopt) {
             for (auto it = active_leases_.begin(); it != active_leases_.end(); ++it) {
                 if (it->id == id) {
+                    Lease released = *it;
+                    released.active = false;
+                    released.released_at_tick = released_at_tick;
+                    released_leases_.push_back(released);
                     active_leases_.erase(it);
                     return true;
                 }
@@ -111,6 +117,15 @@ namespace timenav {
             return nullptr;
         }
         [[nodiscard]] bool has_lease(LeaseId id) const noexcept { return find_lease(id) != nullptr; }
+        [[nodiscard]] const Lease *find_released_lease(LeaseId id) const noexcept {
+            for (const auto &lease : released_leases_) {
+                if (lease.id == id) {
+                    return &lease;
+                }
+            }
+
+            return nullptr;
+        }
         [[nodiscard]] dp::Vector<const Lease *> leases_for_robot(RobotId robot_id) const {
             dp::Vector<const Lease *> leases;
             for (const auto &lease : active_leases_) {
@@ -423,6 +438,7 @@ namespace timenav {
         const WorkspaceIndex *index_ = nullptr;
         dp::Vector<ClaimRequest> active_requests_{};
         dp::Vector<Lease> active_leases_{};
+        dp::Vector<Lease> released_leases_{};
     };
 
 } // namespace timenav

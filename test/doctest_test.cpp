@@ -1089,9 +1089,13 @@ TEST_CASE("claim manager releases active leases by id") {
     lease.id = timenav::LeaseId{81};
     manager.add_lease(lease);
 
-    CHECK(manager.release_lease(timenav::LeaseId{81}));
+    CHECK(manager.release_lease(timenav::LeaseId{81}, 15));
     CHECK(manager.lease_count() == 0);
     CHECK(manager.find_lease(timenav::LeaseId{81}) == nullptr);
+    REQUIRE(manager.find_released_lease(timenav::LeaseId{81}) != nullptr);
+    CHECK_FALSE(manager.find_released_lease(timenav::LeaseId{81})->active);
+    REQUIRE(manager.find_released_lease(timenav::LeaseId{81})->released_at_tick.has_value());
+    CHECK(manager.find_released_lease(timenav::LeaseId{81})->released_at_tick.value() == 15);
     CHECK_FALSE(manager.release_lease(timenav::LeaseId{81}));
 }
 

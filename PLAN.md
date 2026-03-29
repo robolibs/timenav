@@ -1341,7 +1341,7 @@ Still missing / still weak:
 - [x] Slice 5.5: add compatibility matrix for zone claims
 - [x] Slice 5.6: add compatibility matrix for edge and node claims
 - [x] Slice 5.7: add claim grant/deny evaluation
-- [ ] Slice 5.8: add lease release path
+- [x] Slice 5.8: add lease release path
 - [ ] Slice 5.9: add lease expiry handling
 - [ ] Slice 5.10: add tests for conflicting and non-conflicting claim scenarios
 
