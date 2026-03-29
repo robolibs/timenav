@@ -1260,7 +1260,7 @@ Still missing / still weak:
 - [ ] document exact behavior when `coord_mode` and `ref` do not agree
 
 - [x] Slice 2.1: add `nodes_in_zone(zone_id)` query
-- [ ] Slice 2.2: add `zones_of_node(node_id)` query
+- [x] Slice 2.2: add `zones_of_node(node_id)` query
 - [ ] Slice 2.3: add `zones_of_edge(edge_id)` query
 - [ ] Slice 2.4: add `edge_between(node_a, node_b)` query
 - [ ] Slice 2.5: expose workspace `ref` through the index
