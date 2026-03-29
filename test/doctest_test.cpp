@@ -378,6 +378,41 @@ TEST_CASE("route to claim helpers derive ordered claim targets and requests") {
     CHECK(request.targets.back().resource_id == targets.back().resource_id);
 }
 
+TEST_CASE("coordinator derives rolling horizon claim requests from registered robot routes") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{31};
+    state.mission_id = timenav::MissionId{41};
+    state.route_plan = route_plan.value();
+    state.horizon = 1;
+    coordinator.register_robot(state);
+
+    const auto request = coordinator.claim_request_for_robot(timenav::RobotId{31}, timenav::ClaimId{121});
+    const auto expected_zone_targets = std::min<dp::u64>(route_plan.value().traversed_zone_ids.size(), state.horizon + 1);
+    const auto expected_edge_targets = std::min<dp::u64>(route_plan.value().traversed_edge_ids.size(), state.horizon);
+    const auto expected_node_targets = std::min<dp::u64>(route_plan.value().traversed_node_ids.size(), state.horizon + 1);
+
+    CHECK(request.id == timenav::ClaimId{121});
+    CHECK(request.robot_id == timenav::RobotId{31});
+    CHECK(request.mission_id == timenav::MissionId{41});
+    CHECK(request.targets.size() == expected_zone_targets + expected_edge_targets + expected_node_targets);
+    CHECK(request.targets[0].kind == timenav::ClaimTargetKind::Zone);
+    CHECK(request.targets[expected_zone_targets].kind == timenav::ClaimTargetKind::Edge);
+    CHECK(request.targets[expected_zone_targets + expected_edge_targets].kind == timenav::ClaimTargetKind::Node);
+    CHECK(request.targets.back().kind == timenav::ClaimTargetKind::Node);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "timenav/claim_manager.hpp"
 #include "timenav/robot_state.hpp"
 
@@ -30,6 +32,36 @@ namespace timenav {
         request.mission_id = mission_id;
         request.access_mode = access_mode;
         request.targets = claim_targets_from_route(route_plan);
+        return request;
+    }
+
+    inline ClaimRequest rolling_horizon_claim_request(ClaimId claim_id, const RobotState &state,
+                                                      ClaimAccessMode access_mode = ClaimAccessMode::Exclusive) {
+        ClaimRequest request{};
+        request.id = claim_id;
+        request.robot_id = state.robot_id;
+        request.mission_id = state.mission_id;
+        request.access_mode = access_mode;
+
+        if (!state.route_plan.has_value()) {
+            return request;
+        }
+
+        const auto &route_plan = state.route_plan.value();
+        const auto node_limit = std::min<dp::u64>(route_plan.traversed_node_ids.size(), state.horizon + 1);
+        const auto edge_limit = std::min<dp::u64>(route_plan.traversed_edge_ids.size(), state.horizon);
+        const auto zone_limit = std::min<dp::u64>(route_plan.traversed_zone_ids.size(), state.horizon + 1);
+
+        for (dp::u64 i = 0; i < zone_limit; ++i) {
+            request.targets.push_back(ClaimTarget{ClaimTargetKind::Zone, route_plan.traversed_zone_ids[i]});
+        }
+        for (dp::u64 i = 0; i < edge_limit; ++i) {
+            request.targets.push_back(ClaimTarget{ClaimTargetKind::Edge, route_plan.traversed_edge_ids[i]});
+        }
+        for (dp::u64 i = 0; i < node_limit; ++i) {
+            request.targets.push_back(ClaimTarget{ClaimTargetKind::Node, route_plan.traversed_node_ids[i]});
+        }
+
         return request;
     }
 
@@ -72,6 +104,17 @@ namespace timenav {
             }
 
             return nullptr;
+        }
+
+        [[nodiscard]] ClaimRequest
+        claim_request_for_robot(RobotId robot_id, ClaimId claim_id,
+                                ClaimAccessMode access_mode = ClaimAccessMode::Exclusive) const {
+            const auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return ClaimRequest{};
+            }
+
+            return rolling_horizon_claim_request(claim_id, *state, access_mode);
         }
 
       private:
