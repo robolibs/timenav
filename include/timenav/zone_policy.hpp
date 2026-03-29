@@ -535,7 +535,19 @@ namespace timenav {
         }
 
         merged.kind = merged_kind;
-        merged.capacity = std::min(parent.capacity, child.capacity);
+        if (parent.capacity_is_explicit && child.capacity_is_explicit) {
+            merged.capacity = std::min(parent.capacity, child.capacity);
+            merged.capacity_is_explicit = true;
+        } else if (child.capacity_is_explicit) {
+            merged.capacity = child.capacity;
+            merged.capacity_is_explicit = true;
+        } else if (parent.capacity_is_explicit) {
+            merged.capacity = parent.capacity;
+            merged.capacity_is_explicit = true;
+        } else {
+            merged.capacity = child.capacity;
+            merged.capacity_is_explicit = false;
+        }
         merged.requires_claim = parent.requires_claim || child.requires_claim;
         merged.blocks_traversal_without_grant =
             parent.blocks_traversal_without_grant || child.blocks_traversal_without_grant;

@@ -1368,6 +1368,7 @@ TEST_CASE("zone policy merge rules honor dominance capacity and child overrides"
     timenav::ZonePolicy parent{};
     parent.kind = timenav::ZonePolicyKind::ExclusiveAccess;
     parent.capacity = 5;
+    parent.capacity_is_explicit = true;
     parent.requires_claim = true;
     parent.speed_limit = 1.0;
     parent.waiting_allowed = true;
@@ -1376,6 +1377,7 @@ TEST_CASE("zone policy merge rules honor dominance capacity and child overrides"
     timenav::ZonePolicy child{};
     child.kind = timenav::ZonePolicyKind::SharedAccess;
     child.capacity = 2;
+    child.capacity_is_explicit = true;
     child.speed_limit = 0.5;
     child.waiting_allowed = false;
     child.entry_rule = dp::String{"badge"};
@@ -1385,6 +1387,7 @@ TEST_CASE("zone policy merge rules honor dominance capacity and child overrides"
 
     CHECK(merged.kind == timenav::ZonePolicyKind::ExclusiveAccess);
     CHECK(merged.capacity == 2);
+    CHECK(merged.capacity_is_explicit);
     CHECK(merged.requires_claim);
     REQUIRE(merged.speed_limit.has_value());
     CHECK(merged.speed_limit.value() == doctest::Approx(0.5));
@@ -1405,6 +1408,14 @@ TEST_CASE("zone policy merge rules honor dominance capacity and child overrides"
     CHECK(restricted.kind == timenav::ZonePolicyKind::Restricted);
     CHECK(restricted.blocks_entry_without_grant);
     CHECK(restricted.blocks_traversal_without_grant);
+
+    timenav::ZonePolicy inherited_parent{};
+    timenav::ZonePolicy explicit_child{};
+    explicit_child.capacity = 3;
+    explicit_child.capacity_is_explicit = true;
+    const auto inherited_merge = timenav::merge_zone_policy(inherited_parent, explicit_child);
+    CHECK(inherited_merge.capacity == 3);
+    CHECK(inherited_merge.capacity_is_explicit);
 }
 
 TEST_CASE("effective edge semantics combine structural and zone-derived rules") {
