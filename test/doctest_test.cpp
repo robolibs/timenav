@@ -379,6 +379,14 @@ TEST_CASE("vda factsheet types expose typed defaults") {
     CHECK(factsheet.supported_actions.empty());
 }
 
+TEST_CASE("vda response types expose typed defaults") {
+    const timenav::vda::Response response{};
+
+    CHECK(response.action_id.empty());
+    CHECK_FALSE(response.accepted);
+    CHECK_FALSE(response.description.has_value());
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
