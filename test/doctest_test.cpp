@@ -467,11 +467,17 @@ TEST_CASE("vda instant action types expose typed defaults") {
 }
 
 TEST_CASE("vda factsheet types expose typed defaults") {
+    const timenav::vda::TypeSpecification specification{};
     const timenav::vda::Factsheet factsheet{};
 
+    CHECK_FALSE(specification.max_speed.has_value());
+    CHECK_FALSE(specification.max_payload.has_value());
     CHECK(factsheet.manufacturer.empty());
     CHECK(factsheet.serial_number.empty());
     CHECK(factsheet.protocol_version == "3.0.0");
+    CHECK_FALSE(factsheet.agv_class.has_value());
+    CHECK_FALSE(factsheet.software_version.has_value());
+    CHECK_FALSE(factsheet.type_specification.max_speed.has_value());
     CHECK(factsheet.supported_actions.empty());
 }
 
