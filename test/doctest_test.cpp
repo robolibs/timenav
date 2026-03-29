@@ -349,6 +349,15 @@ TEST_CASE("vda state types expose typed defaults") {
     CHECK(state.errors.empty());
 }
 
+TEST_CASE("vda connection types expose typed defaults") {
+    const timenav::vda::Connection connection{};
+
+    CHECK(connection.interface_name.empty());
+    CHECK(connection.manufacturer.empty());
+    CHECK(connection.serial_number.empty());
+    CHECK(connection.version == "3.0.0");
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
