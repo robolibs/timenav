@@ -9,6 +9,7 @@
 #include "timenav/robot_state.hpp"
 #include "timenav/route.hpp"
 #include "timenav/vda/connection.hpp"
+#include "timenav/vda/instant_actions.hpp"
 #include "timenav/vda/order.hpp"
 #include "timenav/vda/state.hpp"
 #include "timenav/workspace_index.hpp"

@@ -358,6 +358,18 @@ TEST_CASE("vda connection types expose typed defaults") {
     CHECK(connection.version == "3.0.0");
 }
 
+TEST_CASE("vda instant action types expose typed defaults") {
+    const timenav::vda::InstantAction action{};
+    const timenav::vda::InstantActions actions{};
+
+    CHECK(action.action_id.empty());
+    CHECK(action.action_type.empty());
+    CHECK(action.blocking_type == timenav::vda::ActionBlockingType::None);
+    CHECK(action.parameters.empty());
+    CHECK(actions.header_id.empty());
+    CHECK(actions.actions.empty());
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
