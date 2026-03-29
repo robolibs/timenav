@@ -589,6 +589,39 @@ TEST_CASE("coordinator registers and updates robot state") {
     CHECK(coordinator.find_robot_state(timenav::RobotId{99}) == nullptr);
 }
 
+TEST_CASE("coordinator can unregister robots assign routes and update claim state") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{41};
+    coordinator.register_robot(state);
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_b_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    CHECK(coordinator.assign_route_plan(timenav::RobotId{41}, route_plan.value(), 3, 12));
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{41}) != nullptr);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{41})->progress_state ==
+          timenav::RobotProgressState::FollowingRoute);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{41})->route_plan.has_value());
+
+    dp::Vector<timenav::ClaimId> pending_claim_ids{timenav::ClaimId{11}, timenav::ClaimId{12}};
+    dp::Vector<timenav::LeaseId> active_lease_ids{timenav::LeaseId{21}};
+    CHECK(coordinator.update_robot_claim_state(timenav::RobotId{41}, pending_claim_ids, active_lease_ids, 22));
+    CHECK(coordinator.find_robot_state(timenav::RobotId{41})->pending_claim_ids.size() == 2);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{41})->active_lease_ids.size() == 1);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{41})->last_claim_tick.value() == 22);
+
+    CHECK(coordinator.unregister_robot(timenav::RobotId{41}));
+    CHECK_FALSE(coordinator.unregister_robot(timenav::RobotId{41}));
+    CHECK(coordinator.find_robot_state(timenav::RobotId{41}) == nullptr);
+}
+
 TEST_CASE("route to claim helpers derive ordered claim targets and requests") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

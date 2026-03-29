@@ -194,6 +194,16 @@ namespace timenav {
 
             robot_states_.push_back(state);
         }
+        [[nodiscard]] bool unregister_robot(RobotId robot_id) {
+            for (auto it = robot_states_.begin(); it != robot_states_.end(); ++it) {
+                if (it->robot_id == robot_id) {
+                    robot_states_.erase(it);
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         [[nodiscard]] RobotState *find_robot_state(RobotId robot_id) noexcept {
             for (auto &state : robot_states_) {
@@ -237,6 +247,34 @@ namespace timenav {
             state->current_node_id = current_node_id;
             state->current_edge_id = current_edge_id;
             state->updated_at_tick = updated_at_tick;
+            return true;
+        }
+        [[nodiscard]] bool assign_route_plan(RobotId robot_id, const RoutePlan &route_plan, dp::u64 horizon,
+                                             dp::u64 updated_at_tick) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return false;
+            }
+
+            state->route_plan = route_plan;
+            state->horizon = horizon;
+            state->next_route_step_index = 0;
+            state->progress_state =
+                route_plan.traversed_node_ids.empty() ? RobotProgressState::Idle : RobotProgressState::FollowingRoute;
+            state->updated_at_tick = updated_at_tick;
+            return true;
+        }
+        [[nodiscard]] bool update_robot_claim_state(RobotId robot_id, const dp::Vector<ClaimId> &pending_claim_ids,
+                                                    const dp::Vector<LeaseId> &active_lease_ids,
+                                                    dp::Optional<dp::u64> last_claim_tick = dp::nullopt) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return false;
+            }
+
+            state->pending_claim_ids = pending_claim_ids;
+            state->active_lease_ids = active_lease_ids;
+            state->last_claim_tick = last_claim_tick;
             return true;
         }
 
