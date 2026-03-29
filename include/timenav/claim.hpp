@@ -12,6 +12,11 @@ namespace timenav {
 
     enum class ClaimDecision { Grant, Deny };
 
+    struct ClaimWindow {
+        dp::Optional<dp::u64> start_tick;
+        dp::Optional<dp::u64> end_tick;
+    };
+
     struct ClaimTarget {
         ClaimTargetKind kind = ClaimTargetKind::Zone;
         zoneout::UUID resource_id = zoneout::UUID::null();
@@ -23,6 +28,8 @@ namespace timenav {
         MissionId mission_id{0};
         ClaimAccessMode access_mode = ClaimAccessMode::Exclusive;
         dp::u32 priority = 0;
+        dp::Optional<dp::u64> requested_at_tick;
+        ClaimWindow window{};
         dp::Vector<ClaimTarget> targets;
     };
 
@@ -32,7 +39,9 @@ namespace timenav {
         RobotId robot_id{0};
         ClaimAccessMode access_mode = ClaimAccessMode::Exclusive;
         dp::Vector<ClaimTarget> targets;
+        dp::Optional<dp::u64> granted_at_tick;
         dp::Optional<dp::u64> expires_at_tick;
+        dp::Optional<dp::u64> released_at_tick;
         bool active = true;
     };
 
@@ -41,6 +50,7 @@ namespace timenav {
         dp::String reason;
         dp::Optional<ClaimId> conflicting_claim_id;
         dp::Optional<LeaseId> conflicting_lease_id;
+        dp::Vector<ClaimTarget> conflicting_targets;
     };
 
 } // namespace timenav

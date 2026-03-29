@@ -268,6 +268,7 @@ TEST_CASE("claim types expose typed defaults") {
     const timenav::ClaimTarget target{};
     const timenav::ClaimRequest request{};
     const timenav::Lease lease{};
+    const timenav::ClaimWindow window{};
 
     CHECK(target.kind == timenav::ClaimTargetKind::Zone);
     CHECK(target.resource_id.isNull());
@@ -276,13 +277,20 @@ TEST_CASE("claim types expose typed defaults") {
     CHECK(request.mission_id.raw() == 0);
     CHECK(request.access_mode == timenav::ClaimAccessMode::Exclusive);
     CHECK(request.priority == 0);
+    CHECK_FALSE(request.requested_at_tick.has_value());
+    CHECK_FALSE(request.window.start_tick.has_value());
+    CHECK_FALSE(request.window.end_tick.has_value());
     CHECK(request.targets.empty());
+    CHECK_FALSE(window.start_tick.has_value());
+    CHECK_FALSE(window.end_tick.has_value());
     CHECK(lease.id.raw() == 0);
     CHECK(lease.claim_id.raw() == 0);
     CHECK(lease.robot_id.raw() == 0);
     CHECK(lease.access_mode == timenav::ClaimAccessMode::Exclusive);
     CHECK(lease.targets.empty());
+    CHECK_FALSE(lease.granted_at_tick.has_value());
     CHECK_FALSE(lease.expires_at_tick.has_value());
+    CHECK_FALSE(lease.released_at_tick.has_value());
     CHECK(lease.active);
 }
 
