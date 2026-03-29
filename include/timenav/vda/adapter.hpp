@@ -51,13 +51,19 @@ namespace timenav::vda {
     inline State map_robot_state(const RobotState &robot_state) {
         State state{};
         state.agv_id = dp::String{std::to_string(robot_state.robot_id.raw())};
-        state.operating_mode = robot_state.route_plan.has_value() ? dp::String{"AUTOMATIC"} : dp::String{"IDLE"};
+        state.operating_mode = robot_state.route_plan.has_value() ? OperatingMode::Automatic : OperatingMode::Manual;
+        state.connection_state = ConnectionState::Online;
         if (robot_state.current_node_id.has_value()) {
             state.last_node_id = uuid_string(*robot_state.current_node_id);
         }
         if (robot_state.current_edge_id.has_value()) {
             state.last_edge_id = uuid_string(*robot_state.current_edge_id);
         }
+        if (robot_state.route_plan.has_value()) {
+            state.order_id = uuid_string(robot_state.route_plan->goal_node_id);
+        }
+        state.driving_state = robot_state.progress_state == RobotProgressState::FollowingRoute ? dp::String{"DRIVING"}
+                                                                                               : dp::String{"STOPPED"};
         if (!robot_state.pending_claim_ids.empty()) {
             state.errors.push_back(dp::String{"pending_claims"});
         }

@@ -423,12 +423,20 @@ TEST_CASE("vda order types expose typed defaults") {
 }
 
 TEST_CASE("vda state types expose typed defaults") {
+    const timenav::vda::BatteryState battery{};
     const timenav::vda::State state{};
 
+    CHECK_FALSE(battery.battery_charge.has_value());
+    CHECK_FALSE(battery.charging);
     CHECK(state.agv_id.empty());
-    CHECK(state.operating_mode.empty());
+    CHECK(state.operating_mode == timenav::vda::OperatingMode::Manual);
+    CHECK(state.connection_state == timenav::vda::ConnectionState::Offline);
     CHECK_FALSE(state.last_node_id.has_value());
     CHECK_FALSE(state.last_edge_id.has_value());
+    CHECK_FALSE(state.order_id.has_value());
+    CHECK_FALSE(state.driving_state.has_value());
+    CHECK_FALSE(state.battery_state.battery_charge.has_value());
+    CHECK(state.action_states.empty());
     CHECK(state.errors.empty());
 }
 
@@ -506,6 +514,7 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     robot_state.robot_id = timenav::RobotId{77};
     robot_state.current_node_id = zoneout::UUID("11111111-1111-4111-8111-111111111111");
     robot_state.current_edge_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
+    robot_state.progress_state = timenav::RobotProgressState::Waiting;
     robot_state.pending_claim_ids.push_back(timenav::ClaimId{5});
 
     const timenav::vda::Adapter adapter{};
@@ -514,11 +523,14 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
 
     CHECK(state.agv_id == "77");
     CHECK(direct_state.agv_id == state.agv_id);
-    CHECK(state.operating_mode == "IDLE");
+    CHECK(state.operating_mode == timenav::vda::OperatingMode::Manual);
+    CHECK(state.connection_state == timenav::vda::ConnectionState::Online);
     REQUIRE(state.last_node_id.has_value());
     REQUIRE(state.last_edge_id.has_value());
     CHECK(state.last_node_id.value() == "11111111-1111-4111-8111-111111111111");
     CHECK(state.last_edge_id.value() == "22222222-2222-4222-8222-222222222222");
+    REQUIRE(state.driving_state.has_value());
+    CHECK(state.driving_state.value() == "STOPPED");
     CHECK(state.errors.size() == 1);
     CHECK(state.errors[0] == "pending_claims");
 }
