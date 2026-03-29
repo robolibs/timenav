@@ -1529,8 +1529,8 @@ This section summarizes the major unfinished work that must still happen before 
 - [x] define richer denial reasons and operator/debug visibility
 - [ ] define lease refresh / extension behavior
 - [ ] define revoke behavior and required downstream reactions
-- [ ] fix rolling-horizon release/claim behavior to use per-step zone coverage instead of de-duplicated route zones
-- [ ] clean requests and leases correctly on robot unregister/reset
+- [x] fix rolling-horizon release/claim behavior to use per-step zone coverage instead of de-duplicated route zones
+- [x] clean requests and leases correctly on robot unregister/reset
 
 ### Planner Depth
 
@@ -1565,9 +1565,9 @@ This section summarizes the major unfinished work that must still happen before 
 - [ ] add scheduler/priority/right-of-way tests
 - [ ] add compatibility-layer tests against representative VDA `3.0.0` scenarios
 - [ ] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
-- [ ] add tests for repeated-zone routes and zone re-entry during progress updates
+- [x] add tests for repeated-zone routes and zone re-entry during progress updates
 - [x] add tests for bounded-capacity saturation beyond two robots
-- [ ] add tests for unregister/reset cleanup and stale borrowed-index behavior
+- [x] add tests for unregister/reset cleanup and stale borrowed-index behavior
 
 ---
 

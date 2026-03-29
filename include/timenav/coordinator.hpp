@@ -9,6 +9,53 @@
 
 namespace timenav {
 
+    inline dp::u64 route_progress_index(const RobotState &state) {
+        if (!state.route_plan.has_value()) {
+            return state.next_route_step_index;
+        }
+
+        const auto &route_plan = state.route_plan.value();
+        dp::u64 start_node_index = state.next_route_step_index;
+        if (state.current_node_id.has_value()) {
+            const auto current_node_it = std::find(route_plan.traversed_node_ids.begin(),
+                                                   route_plan.traversed_node_ids.end(), state.current_node_id.value());
+            if (current_node_it != route_plan.traversed_node_ids.end()) {
+                start_node_index =
+                    static_cast<dp::u64>(std::distance(route_plan.traversed_node_ids.begin(), current_node_it));
+            }
+        }
+
+        return start_node_index;
+    }
+
+    inline dp::Vector<zoneout::UUID> route_zone_targets_from_progress(const RoutePlan &route_plan,
+                                                                      dp::u64 start_node_index, dp::u64 horizon) {
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> seen_zone_ids;
+        dp::Vector<zoneout::UUID> zone_ids;
+
+        const auto node_limit =
+            std::min<dp::u64>(route_plan.traversed_node_zone_ids.size(), start_node_index + horizon + 1);
+        for (dp::u64 i = start_node_index; i < node_limit; ++i) {
+            for (const auto &zone_id : route_plan.traversed_node_zone_ids[i]) {
+                if (seen_zone_ids.insert(zone_id).second) {
+                    zone_ids.push_back(zone_id);
+                }
+            }
+        }
+
+        const auto edge_limit =
+            std::min<dp::u64>(route_plan.traversed_edge_zone_ids.size(), start_node_index + horizon);
+        for (dp::u64 i = start_node_index; i < edge_limit; ++i) {
+            for (const auto &zone_id : route_plan.traversed_edge_zone_ids[i]) {
+                if (seen_zone_ids.insert(zone_id).second) {
+                    zone_ids.push_back(zone_id);
+                }
+            }
+        }
+
+        return zone_ids;
+    }
+
     inline dp::Vector<ClaimTarget> claim_targets_from_route(const RoutePlan &route_plan) {
         dp::Vector<ClaimTarget> targets;
 
@@ -69,32 +116,29 @@ namespace timenav {
         }
 
         const auto &route_plan = state.route_plan.value();
-        dp::u64 start_node_index = state.next_route_step_index;
-        if (state.current_node_id.has_value()) {
-            const auto current_node_it = std::find(route_plan.traversed_node_ids.begin(),
-                                                   route_plan.traversed_node_ids.end(), state.current_node_id.value());
-            if (current_node_it != route_plan.traversed_node_ids.end()) {
-                start_node_index =
-                    static_cast<dp::u64>(std::distance(route_plan.traversed_node_ids.begin(), current_node_it));
-            }
+        const auto route_shape = validate_route_plan_shape(route_plan);
+        if (route_shape.is_err()) {
+            return request;
         }
 
-        const auto available_nodes = route_plan.traversed_node_ids.size() > start_node_index
-                                         ? route_plan.traversed_node_ids.size() - start_node_index
-                                         : 0;
+        const dp::u64 start_node_index = route_progress_index(state);
+        request.requested_at_tick = state.updated_at_tick;
+        request.window.start_tick = state.updated_at_tick;
+        if (start_node_index >= route_plan.traversed_node_ids.size()) {
+            request.window.end_tick = state.updated_at_tick;
+            return request;
+        }
+
+        const auto available_nodes = route_plan.traversed_node_ids.size() - start_node_index;
         const auto available_edges = route_plan.traversed_edge_ids.size() > start_node_index
                                          ? route_plan.traversed_edge_ids.size() - start_node_index
                                          : 0;
-        const auto available_zones = route_plan.traversed_zone_ids.size() > start_node_index
-                                         ? route_plan.traversed_zone_ids.size() - start_node_index
-                                         : 0;
         const auto node_limit = std::min<dp::u64>(available_nodes, state.horizon + 1);
         const auto edge_limit = std::min<dp::u64>(available_edges, state.horizon);
-        const auto zone_limit = std::min<dp::u64>(available_zones, state.horizon + 1);
+        const auto zone_targets = route_zone_targets_from_progress(route_plan, start_node_index, state.horizon);
 
-        for (dp::u64 i = 0; i < zone_limit; ++i) {
-            request.targets.push_back(
-                ClaimTarget{ClaimTargetKind::Zone, route_plan.traversed_zone_ids[start_node_index + i]});
+        for (const auto &zone_id : zone_targets) {
+            request.targets.push_back(ClaimTarget{ClaimTargetKind::Zone, zone_id});
         }
         for (dp::u64 i = 0; i < edge_limit; ++i) {
             request.targets.push_back(
@@ -105,12 +149,13 @@ namespace timenav {
                 ClaimTarget{ClaimTargetKind::Node, route_plan.traversed_node_ids[start_node_index + i]});
         }
 
-        request.requested_at_tick = state.updated_at_tick;
         if (start_node_index < route_plan.steps.size()) {
-            const auto remaining_cost = route_plan.total_cost - route_plan.steps[start_node_index].cumulative_cost;
-            request.window.start_tick = state.updated_at_tick;
-            request.window.end_tick =
-                state.updated_at_tick + static_cast<dp::u64>(std::ceil(std::max<dp::f64>(0.0, remaining_cost)));
+            const auto traversed_cost =
+                start_node_index == 0 ? 0.0 : route_plan.steps[start_node_index].cumulative_cost;
+            const auto remaining_cost = std::max<dp::f64>(0.0, route_plan.total_cost - traversed_cost);
+            request.window.end_tick = state.updated_at_tick + static_cast<dp::u64>(std::ceil(remaining_cost));
+        } else {
+            request.window.end_tick = state.updated_at_tick;
         }
 
         return request;
@@ -122,6 +167,9 @@ namespace timenav {
         }
 
         const auto &route_plan = state.route_plan.value();
+        if (validate_route_plan_shape(route_plan).is_err()) {
+            return 0;
+        }
         const auto current_node_it = std::find(route_plan.traversed_node_ids.begin(),
                                                route_plan.traversed_node_ids.end(), *state.current_node_id);
         if (current_node_it == route_plan.traversed_node_ids.end()) {
@@ -140,8 +188,15 @@ namespace timenav {
         for (dp::u64 i = current_index; i < route_plan.traversed_edge_ids.size(); ++i) {
             remaining_edge_ids.insert(route_plan.traversed_edge_ids[i]);
         }
-        for (dp::u64 i = current_index; i < route_plan.traversed_zone_ids.size(); ++i) {
-            remaining_zone_ids.insert(route_plan.traversed_zone_ids[i]);
+        for (dp::u64 i = current_index; i < route_plan.traversed_node_zone_ids.size(); ++i) {
+            for (const auto &zone_id : route_plan.traversed_node_zone_ids[i]) {
+                remaining_zone_ids.insert(zone_id);
+            }
+        }
+        for (dp::u64 i = current_index; i < route_plan.traversed_edge_zone_ids.size(); ++i) {
+            for (const auto &zone_id : route_plan.traversed_edge_zone_ids[i]) {
+                remaining_zone_ids.insert(zone_id);
+            }
         }
 
         dp::Vector<LeaseId> retained_lease_ids;
@@ -291,6 +346,8 @@ namespace timenav {
         [[nodiscard]] bool unregister_robot(RobotId robot_id) {
             for (auto it = robot_states_.begin(); it != robot_states_.end(); ++it) {
                 if (it->robot_id == robot_id) {
+                    claim_manager_.remove_requests_for_robot(robot_id);
+                    claim_manager_.release_leases_for_robot(robot_id, it->updated_at_tick);
                     robot_states_.erase(it);
                     return true;
                 }
