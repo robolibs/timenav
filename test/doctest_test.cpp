@@ -1118,6 +1118,8 @@ TEST_CASE("claim manager expires leases at or before the current tick") {
 
     CHECK(manager.expire_leases(10) == 1);
     CHECK(manager.find_lease(timenav::LeaseId{91}) == nullptr);
+    REQUIRE(manager.find_released_lease(timenav::LeaseId{91}) != nullptr);
+    CHECK(manager.find_released_lease(timenav::LeaseId{91})->released_at_tick.value() == 10);
     CHECK(manager.find_lease(timenav::LeaseId{92}) != nullptr);
     CHECK(manager.find_lease(timenav::LeaseId{93}) != nullptr);
 }

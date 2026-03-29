@@ -86,14 +86,23 @@ namespace timenav {
             return false;
         }
         [[nodiscard]] dp::u64 expire_leases(dp::u64 current_tick) {
-            const auto previous_size = active_leases_.size();
-            active_leases_.erase(std::remove_if(active_leases_.begin(), active_leases_.end(),
-                                                [current_tick](const Lease &lease) {
-                                                    return lease.expires_at_tick.has_value() &&
-                                                           lease.expires_at_tick.value() <= current_tick;
-                                                }),
-                                 active_leases_.end());
-            return previous_size - active_leases_.size();
+            dp::u64 expired = 0;
+            auto it = active_leases_.begin();
+            while (it != active_leases_.end()) {
+                if (!(it->expires_at_tick.has_value() && it->expires_at_tick.value() <= current_tick)) {
+                    ++it;
+                    continue;
+                }
+
+                Lease released = *it;
+                released.active = false;
+                released.released_at_tick = current_tick;
+                released_leases_.push_back(released);
+                it = active_leases_.erase(it);
+                ++expired;
+            }
+
+            return expired;
         }
 
         [[nodiscard]] const ClaimRequest *find_request(ClaimId id) const noexcept {
