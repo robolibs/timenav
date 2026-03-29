@@ -193,6 +193,44 @@ namespace {
         return fixture;
     }
 
+    RouteChoiceWorkspace make_blocked_only_route_workspace() {
+        auto fixture = make_route_choice_workspace();
+
+        const auto edge_ac = fixture.workspace.find_edge(fixture.edge_ac_id);
+        const auto edge_cd = fixture.workspace.find_edge(fixture.edge_cd_id);
+        if (!edge_ac.has_value() || !edge_cd.has_value()) {
+            throw std::runtime_error("expected alternative route edges to exist");
+        }
+
+        fixture.workspace.graph().edge_property(*edge_ac).properties["traffic.blocked"] = "true";
+        fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.blocked"] = "true";
+        return fixture;
+    }
+
+    TestWorkspace make_unreachable_test_workspace() {
+        auto fixture = make_test_workspace();
+        fixture.node_c_id = zoneout::UUID("12121212-3434-4567-8999-aaaaaaaaaaaa");
+
+        auto root = zoneout::ZoneBuilder()
+                        .with_name("root")
+                        .with_type("workspace")
+                        .with_boundary(rectangle(0.0, 0.0, 100.0, 100.0))
+                        .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                        .build();
+
+        TestWorkspace isolated{zoneout::Workspace(std::move(root))};
+        isolated.node_a_id = fixture.node_a_id;
+        isolated.node_b_id = fixture.node_b_id;
+        isolated.node_c_id = fixture.node_c_id;
+        isolated.edge_ab_id = fixture.edge_ab_id;
+
+        const auto node_a = isolated.workspace.add_node(zoneout::NodeData{isolated.node_a_id, dp::Point{10.0, 10.0, 0.0}});
+        const auto node_b = isolated.workspace.add_node(zoneout::NodeData{isolated.node_b_id, dp::Point{20.0, 10.0, 0.0}});
+        isolated.workspace.add_node(zoneout::NodeData{isolated.node_c_id, dp::Point{80.0, 80.0, 0.0}});
+        isolated.workspace.add_edge(node_a, node_b, zoneout::EdgeData{isolated.edge_ab_id, {}});
+        return isolated;
+    }
+
 } // namespace
 
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
@@ -364,6 +402,32 @@ TEST_CASE("route extraction builds traversed nodes edges zones and steps") {
     CHECK(route_plan.value().traversed_edge_ids == traversed_edges.value());
     CHECK(route_plan.value().traversed_zone_ids.size() >= 1);
     CHECK(route_plan.value().total_cost == doctest::Approx(2.0));
+}
+
+TEST_CASE("planner failure reporting distinguishes unreachable and policy-blocked routes") {
+    {
+        const auto fixture = make_blocked_only_route_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+
+        const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, false);
+
+        CHECK_FALSE(result.plan.has_value());
+        REQUIRE(result.failure.has_value());
+        CHECK(result.failure->kind == timenav::RouteFailureKind::PolicyBlocked);
+        CHECK_FALSE(result.failure->blocked_edge_ids.empty());
+    }
+
+    {
+        const auto fixture = make_unreachable_test_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+
+        const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_c_id, false);
+
+        CHECK_FALSE(result.plan.has_value());
+        REQUIRE(result.failure.has_value());
+        CHECK(result.failure->kind == timenav::RouteFailureKind::Unreachable);
+        CHECK(result.failure->blocked_edge_ids.empty());
+    }
 }
 
 TEST_CASE("zone policy exposes typed defaults") {

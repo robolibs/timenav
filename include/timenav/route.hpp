@@ -35,6 +35,20 @@ namespace timenav {
         std::unordered_map<zoneout::UUID, zoneout::UUID, zoneout::UUIDHash> predecessors;
     };
 
+    enum class RouteFailureKind { MissingStartNode, MissingGoalNode, PolicyBlocked, Unreachable };
+
+    struct RouteFailure {
+        RouteFailureKind kind = RouteFailureKind::Unreachable;
+        dp::String message;
+        dp::Vector<zoneout::UUID> blocked_edge_ids;
+    };
+
+    struct RoutePlanningResult {
+        RouteSearchState search;
+        dp::Optional<RoutePlan> plan;
+        dp::Optional<RouteFailure> failure;
+    };
+
     struct TraversalNeighbor {
         zoneout::UUID node_id;
         zoneout::UUID edge_id;
@@ -438,6 +452,57 @@ namespace timenav {
         }
 
         return dp::Result<RoutePlan>::ok(plan);
+    }
+
+    inline RouteFailure diagnose_route_failure(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
+                                               const zoneout::UUID &goal_node_id) {
+        if (index.node(start_node_id) == nullptr) {
+            return RouteFailure{RouteFailureKind::MissingStartNode, dp::String{"start node is not present"}, {}};
+        }
+        if (index.node(goal_node_id) == nullptr) {
+            return RouteFailure{RouteFailureKind::MissingGoalNode, dp::String{"goal node is not present"}, {}};
+        }
+
+        const auto unconstrained = shortest_path_search(index, start_node_id, goal_node_id);
+        if (unconstrained.found) {
+            const auto unconstrained_nodes = reconstruct_route_nodes(unconstrained, start_node_id, goal_node_id);
+            const auto unconstrained_edges = extract_traversed_edge_ids(index, unconstrained_nodes);
+            dp::Vector<zoneout::UUID> blocked_edge_ids;
+            if (unconstrained_edges.is_ok()) {
+                for (const auto &edge_id : unconstrained_edges.value()) {
+                    if (is_edge_hard_blocked(index, edge_id)) {
+                        blocked_edge_ids.push_back(edge_id);
+                    }
+                }
+            }
+
+            return RouteFailure{RouteFailureKind::PolicyBlocked, dp::String{"route is blocked by traffic policy"},
+                                blocked_edge_ids};
+        }
+
+        return RouteFailure{RouteFailureKind::Unreachable, dp::String{"goal is unreachable from start"}, {}};
+    }
+
+    inline RoutePlanningResult plan_route(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
+                                          const zoneout::UUID &goal_node_id, bool use_penalties = true) {
+        RoutePlanningResult result{};
+        result.search = use_penalties ? shortest_path_search_with_penalties(index, start_node_id, goal_node_id)
+                                      : shortest_path_search_with_blocking(index, start_node_id, goal_node_id);
+
+        if (!result.search.found) {
+            result.failure = diagnose_route_failure(index, start_node_id, goal_node_id);
+            return result;
+        }
+
+        const auto route_nodes = reconstruct_route_nodes(result.search, start_node_id, goal_node_id);
+        const auto route_plan = build_route_plan(index, start_node_id, goal_node_id, route_nodes);
+        if (route_plan.is_err()) {
+            result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}};
+            return result;
+        }
+
+        result.plan = route_plan.value();
+        return result;
     }
 
 } // namespace timenav
