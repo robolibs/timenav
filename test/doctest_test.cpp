@@ -430,6 +430,34 @@ TEST_CASE("planner failure reporting distinguishes unreachable and policy-blocke
     }
 }
 
+TEST_CASE("planner regression covers blocked and allowed alternative routes") {
+    {
+        const auto fixture = make_route_choice_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+
+        const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, false);
+
+        REQUIRE(result.plan.has_value());
+        CHECK_FALSE(result.failure.has_value());
+        CHECK(result.plan->traversed_node_ids.size() == 3);
+        CHECK(result.plan->traversed_node_ids[1] == fixture.node_c_id);
+        CHECK(result.plan->traversed_edge_ids.size() == 2);
+    }
+
+    {
+        const auto fixture = make_penalized_route_workspace();
+        const timenav::WorkspaceIndex index{fixture.workspace};
+
+        const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, true);
+
+        REQUIRE(result.plan.has_value());
+        CHECK_FALSE(result.failure.has_value());
+        CHECK(result.plan->traversed_node_ids.size() == 3);
+        CHECK(result.plan->traversed_node_ids[1] == fixture.node_c_id);
+        CHECK(result.plan->total_cost == doctest::Approx(4.0));
+    }
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 
