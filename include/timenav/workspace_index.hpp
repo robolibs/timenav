@@ -27,6 +27,17 @@ namespace timenav {
         [[nodiscard]] bool has_workspace() const noexcept { return workspace_ != nullptr; }
         [[nodiscard]] bool owns_workspace() const noexcept { return static_cast<bool>(owned_workspace_); }
         [[nodiscard]] const zoneout::Workspace *workspace() const noexcept { return workspace_; }
+        void bind_workspace(const zoneout::Workspace &workspace) {
+            owned_workspace_.reset();
+            workspace_ = &workspace;
+            rebuild();
+        }
+        void bind_workspace(std::shared_ptr<const zoneout::Workspace> workspace) {
+            owned_workspace_ = std::move(workspace);
+            workspace_ = owned_workspace_.get();
+            rebuild();
+        }
+        void refresh() { rebuild(); }
         [[nodiscard]] const zoneout::Zone *root_zone() const noexcept {
             return workspace_ == nullptr ? nullptr : &workspace_->root_zone();
         }

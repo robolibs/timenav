@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <queue>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -27,6 +28,8 @@ namespace timenav {
         dp::Vector<zoneout::UUID> traversed_node_ids;
         dp::Vector<zoneout::UUID> traversed_edge_ids;
         dp::Vector<zoneout::UUID> traversed_zone_ids;
+        dp::Vector<dp::Vector<zoneout::UUID>> traversed_node_zone_ids;
+        dp::Vector<dp::Vector<zoneout::UUID>> traversed_edge_zone_ids;
         dp::f64 total_cost = 0.0;
     };
 
@@ -73,6 +76,7 @@ namespace timenav {
                                                                             const RouteSearchState &search,
                                                                             const zoneout::UUID &start_node_id,
                                                                             const zoneout::UUID &goal_node_id);
+    inline dp::Result<dp::u64> validate_route_plan_shape(const RoutePlan &route_plan);
     inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_zone_ids(const WorkspaceIndex &index,
                                                                             const RouteSearchState &search,
                                                                             const zoneout::UUID &start_node_id,
@@ -440,10 +444,10 @@ namespace timenav {
         return dp::Result<dp::Vector<zoneout::UUID>>::ok(route_nodes);
     }
 
-    inline dp::Result<dp::Vector<RouteStep>> reconstruct_route_steps(const WorkspaceIndex &index,
-                                                                     const RouteSearchState &search,
-                                                                     const zoneout::UUID &start_node_id,
-                                                                     const zoneout::UUID &goal_node_id) {
+    inline dp::Result<dp::Vector<RouteStep>>
+    reconstruct_route_steps(const WorkspaceIndex &index, const RouteSearchState &search,
+                            const zoneout::UUID &start_node_id, const zoneout::UUID &goal_node_id,
+                            RouteCostModel cost_model = RouteCostModel::GraphWeight) {
         const auto route_nodes = reconstruct_route_nodes(search, start_node_id, goal_node_id);
         dp::Vector<RouteStep> steps;
         if (route_nodes.empty() && !(search.found && start_node_id == goal_node_id)) {
@@ -463,7 +467,7 @@ namespace timenav {
                 step.incoming_edge_id = edge_data->id;
                 const auto partial_route = dp::Vector<zoneout::UUID>(route_nodes.begin() + static_cast<dp::i64>(i - 1),
                                                                      route_nodes.begin() + static_cast<dp::i64>(i + 1));
-                const auto step_cost = accumulate_route_cost(index, partial_route);
+                const auto step_cost = accumulate_route_cost(index, partial_route, cost_model);
                 if (step_cost.is_err()) {
                     return dp::Result<dp::Vector<RouteStep>>::err(step_cost.error());
                 }
@@ -594,13 +598,83 @@ namespace timenav {
         return extract_traversed_zone_ids(index, route_nodes.value());
     }
 
+    inline dp::Result<dp::u64> validate_route_plan_shape(const RoutePlan &route_plan) {
+        if (route_plan.traversed_node_ids.empty()) {
+            if (!route_plan.traversed_edge_ids.empty() || !route_plan.steps.empty()) {
+                return dp::Result<dp::u64>::err(
+                    dp::Error::invalid_argument("route plan contains edges or steps without any traversed nodes"));
+            }
+            return dp::Result<dp::u64>::ok(0);
+        }
+
+        if (route_plan.start_node_id != route_plan.traversed_node_ids.front()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::invalid_argument("route plan start node does not match the first traversed node"));
+        }
+        if (route_plan.goal_node_id != route_plan.traversed_node_ids.back()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::invalid_argument("route plan goal node does not match the last traversed node"));
+        }
+        if (route_plan.traversed_edge_ids.size() + 1 != route_plan.traversed_node_ids.size()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::invalid_argument("route plan edge count must equal node count minus one"));
+        }
+        if (!route_plan.steps.empty() && route_plan.steps.size() != route_plan.traversed_node_ids.size()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::invalid_argument("route plan step count must equal traversed node count"));
+        }
+        if (!route_plan.traversed_node_zone_ids.empty() &&
+            route_plan.traversed_node_zone_ids.size() != route_plan.traversed_node_ids.size()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::invalid_argument("route plan node-zone coverage must align with traversed nodes"));
+        }
+        if (!route_plan.traversed_edge_zone_ids.empty() &&
+            route_plan.traversed_edge_zone_ids.size() != route_plan.traversed_edge_ids.size()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::invalid_argument("route plan edge-zone coverage must align with traversed edges"));
+        }
+
+        for (dp::u64 i = 0; i < route_plan.steps.size(); ++i) {
+            if (route_plan.steps[i].node_id != route_plan.traversed_node_ids[i]) {
+                return dp::Result<dp::u64>::err(
+                    dp::Error::invalid_argument("route plan step nodes must match traversed node sequence"));
+            }
+            if (i == 0) {
+                if (route_plan.steps[i].incoming_edge_id.has_value()) {
+                    return dp::Result<dp::u64>::err(
+                        dp::Error::invalid_argument("route plan first step cannot have an incoming edge"));
+                }
+                continue;
+            }
+            if (!route_plan.steps[i].incoming_edge_id.has_value() ||
+                route_plan.steps[i].incoming_edge_id.value() != route_plan.traversed_edge_ids[i - 1]) {
+                return dp::Result<dp::u64>::err(
+                    dp::Error::invalid_argument("route plan step incoming edges must match traversed edges"));
+            }
+        }
+
+        return dp::Result<dp::u64>::ok(route_plan.traversed_edge_ids.size());
+    }
+
     inline dp::Result<RoutePlan> build_route_plan(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
                                                   const zoneout::UUID &goal_node_id,
-                                                  const dp::Vector<zoneout::UUID> &route_nodes) {
+                                                  const dp::Vector<zoneout::UUID> &route_nodes,
+                                                  RouteCostModel cost_model = RouteCostModel::GraphWeight) {
         RoutePlan plan{};
         plan.start_node_id = start_node_id;
         plan.goal_node_id = goal_node_id;
         plan.traversed_node_ids = route_nodes;
+
+        if (!route_nodes.empty()) {
+            if (route_nodes.front() != start_node_id) {
+                return dp::Result<RoutePlan>::err(
+                    dp::Error::invalid_argument("route node sequence does not begin at the requested start node"));
+            }
+            if (route_nodes.back() != goal_node_id) {
+                return dp::Result<RoutePlan>::err(
+                    dp::Error::invalid_argument("route node sequence does not end at the requested goal node"));
+            }
+        }
 
         const auto traversed_edges = extract_traversed_edge_ids(index, route_nodes);
         if (traversed_edges.is_err()) {
@@ -614,7 +688,26 @@ namespace timenav {
         }
         plan.traversed_zone_ids = traversed_zones.value();
 
-        const auto total_cost = accumulate_route_cost(index, route_nodes);
+        for (const auto &node_id : route_nodes) {
+            dp::Vector<zoneout::UUID> step_zone_ids;
+            for (const auto *zone : index.zones_of_node(node_id)) {
+                if (zone != nullptr) {
+                    step_zone_ids.push_back(zone->id());
+                }
+            }
+            plan.traversed_node_zone_ids.push_back(step_zone_ids);
+        }
+        for (const auto &edge_id : plan.traversed_edge_ids) {
+            dp::Vector<zoneout::UUID> step_zone_ids;
+            for (const auto *zone : index.zones_of_edge(edge_id)) {
+                if (zone != nullptr) {
+                    step_zone_ids.push_back(zone->id());
+                }
+            }
+            plan.traversed_edge_zone_ids.push_back(step_zone_ids);
+        }
+
+        const auto total_cost = accumulate_route_cost(index, route_nodes, cost_model);
         if (total_cost.is_err()) {
             return dp::Result<RoutePlan>::err(total_cost.error());
         }
@@ -627,7 +720,7 @@ namespace timenav {
                 step.incoming_edge_id = plan.traversed_edge_ids[i - 1];
                 const auto partial_route = dp::Vector<zoneout::UUID>(route_nodes.begin() + static_cast<dp::i64>(i - 1),
                                                                      route_nodes.begin() + static_cast<dp::i64>(i + 1));
-                const auto step_cost = accumulate_route_cost(index, partial_route);
+                const auto step_cost = accumulate_route_cost(index, partial_route, cost_model);
                 if (step_cost.is_err()) {
                     return dp::Result<RoutePlan>::err(step_cost.error());
                 }
@@ -638,18 +731,23 @@ namespace timenav {
             plan.steps.push_back(step);
         }
 
+        const auto valid = validate_route_plan_shape(plan);
+        if (valid.is_err()) {
+            return dp::Result<RoutePlan>::err(valid.error());
+        }
+
         return dp::Result<RoutePlan>::ok(plan);
     }
 
     inline dp::Result<RoutePlan> build_route_plan(const WorkspaceIndex &index, const RouteSearchState &search,
-                                                  const zoneout::UUID &start_node_id,
-                                                  const zoneout::UUID &goal_node_id) {
+                                                  const zoneout::UUID &start_node_id, const zoneout::UUID &goal_node_id,
+                                                  RouteCostModel cost_model = RouteCostModel::GraphWeight) {
         const auto route_nodes = extract_traversed_node_ids(search, start_node_id, goal_node_id);
         if (route_nodes.is_err()) {
             return dp::Result<RoutePlan>::err(route_nodes.error());
         }
 
-        return build_route_plan(index, start_node_id, goal_node_id, route_nodes.value());
+        return build_route_plan(index, start_node_id, goal_node_id, route_nodes.value(), cost_model);
     }
 
     inline RouteFailure diagnose_route_failure(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
@@ -766,7 +864,8 @@ namespace timenav {
             return result;
         }
 
-        const auto route_plan = build_route_plan(index, result.search, start_node_id, goal_node_id);
+        const auto cost_model = use_penalties ? RouteCostModel::Penalized : RouteCostModel::GraphWeight;
+        const auto route_plan = build_route_plan(index, result.search, start_node_id, goal_node_id, cost_model);
         if (route_plan.is_err()) {
             result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}, {}, {}};
             return result;

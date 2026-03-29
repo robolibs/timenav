@@ -1537,7 +1537,7 @@ This section summarizes the major unfinished work that must still happen before 
 - [ ] ensure planner honors `directed` semantics exactly
 - [ ] incorporate edge property semantics more completely into costing
 - [ ] incorporate zone property semantics more completely into costing
-- [ ] propagate penalized search costs into returned `RoutePlan` totals and timings
+- [x] propagate penalized search costs into returned `RoutePlan` totals and timings
 - [ ] improve blocked-vs-unreachable diagnostics
 - [ ] add richer workspace fixtures to validate planner behavior
 
@@ -1546,7 +1546,7 @@ This section summarizes the major unfinished work that must still happen before 
 - [ ] reduce remaining casual `std::` usage where `dp::` equivalents should be used
 - [ ] standardize string/container/value conventions across all headers
 - [ ] verify result/error surfaces use the intended library conventions consistently
-- [ ] define refresh / mutation semantics for borrowed `WorkspaceIndex` inputs
+- [x] define refresh / mutation semantics for borrowed `WorkspaceIndex` inputs
 
 ### VDA5050 `3.0.0` Compatibility
 
@@ -1564,7 +1564,7 @@ This section summarizes the major unfinished work that must still happen before 
 - [ ] add multi-robot conflict tests
 - [ ] add scheduler/priority/right-of-way tests
 - [ ] add compatibility-layer tests against representative VDA `3.0.0` scenarios
-- [ ] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
+- [x] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
 - [x] add tests for repeated-zone routes and zone re-entry during progress updates
 - [x] add tests for bounded-capacity saturation beyond two robots
 - [x] add tests for unregister/reset cleanup and stale borrowed-index behavior
