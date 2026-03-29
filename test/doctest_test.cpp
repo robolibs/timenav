@@ -324,3 +324,25 @@ TEST_CASE("workspace index lists zones for each node") {
 
     CHECK(index.zones_of_node(zoneout::UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")).empty());
 }
+
+TEST_CASE("workspace index lists zones for each edge") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto edge_ab_zones = index.zones_of_edge(fixture.edge_ab_id);
+    REQUIRE(edge_ab_zones.size() == 2);
+    CHECK(edge_ab_zones[0]->id() == root.id());
+    CHECK(edge_ab_zones[1]->id() == child_a.id());
+
+    const auto edge_bc_zones = index.zones_of_edge(fixture.edge_bc_id);
+    REQUIRE(edge_bc_zones.size() == 3);
+    CHECK(edge_bc_zones[0]->id() == root.id());
+    CHECK(edge_bc_zones[1]->id() == child_a.id());
+    CHECK(edge_bc_zones[2]->id() == child_b.id());
+
+    CHECK(index.zones_of_edge(zoneout::UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")).empty());
+}
