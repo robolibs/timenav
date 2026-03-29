@@ -169,6 +169,30 @@ namespace {
         return fixture;
     }
 
+    RouteChoiceWorkspace make_penalized_route_workspace() {
+        auto fixture = make_route_choice_workspace();
+
+        fixture.workspace.root_zone().children()[0].remove_property("traffic.blocked");
+        fixture.workspace.root_zone().children()[0].set_property("traffic.claim_required", "true");
+
+        const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+        const auto edge_bd = fixture.workspace.find_edge(fixture.edge_bd_id);
+        const auto edge_ac = fixture.workspace.find_edge(fixture.edge_ac_id);
+        const auto edge_cd = fixture.workspace.find_edge(fixture.edge_cd_id);
+        if (!edge_ab.has_value() || !edge_bd.has_value() || !edge_ac.has_value() || !edge_cd.has_value()) {
+            throw std::runtime_error("expected all route choice edges to exist");
+        }
+
+        fixture.workspace.graph().set_weight(*edge_ab, 1.0);
+        fixture.workspace.graph().set_weight(*edge_bd, 1.0);
+        fixture.workspace.graph().set_weight(*edge_ac, 2.0);
+        fixture.workspace.graph().set_weight(*edge_cd, 2.0);
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.cost_bias"] = "4.5";
+        fixture.workspace.graph().edge_property(*edge_bd).properties["traffic.speed_limit"] = "0.25";
+
+        return fixture;
+    }
+
 } // namespace
 
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
@@ -284,6 +308,25 @@ TEST_CASE("edge blocking excludes routes through blocked zone or edge policy") {
 
     CHECK(search.found);
     CHECK(search.distance == doctest::Approx(4.0));
+    REQUIRE(route_nodes.size() == 3);
+    CHECK(route_nodes[0] == fixture.node_a_id);
+    CHECK(route_nodes[1] == fixture.node_c_id);
+    CHECK(route_nodes[2] == fixture.node_d_id);
+}
+
+TEST_CASE("planner penalties prefer lower-risk routes over lower raw weight routes") {
+    const auto fixture = make_penalized_route_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto blocked_penalty = timenav::edge_traversal_penalty(index, fixture.edge_bd_id);
+    const auto biased_penalty = timenav::edge_traversal_penalty(index, fixture.edge_ab_id);
+    const auto neutral_penalty = timenav::edge_traversal_penalty(index, fixture.edge_cd_id);
+    const auto search = timenav::shortest_path_search_with_penalties(index, fixture.node_a_id, fixture.node_d_id);
+    const auto route_nodes = timenav::reconstruct_route_nodes(search, fixture.node_a_id, fixture.node_d_id);
+
+    CHECK(blocked_penalty > biased_penalty);
+    CHECK(biased_penalty > neutral_penalty);
+    CHECK(search.found);
     REQUIRE(route_nodes.size() == 3);
     CHECK(route_nodes[0] == fixture.node_a_id);
     CHECK(route_nodes[1] == fixture.node_c_id);

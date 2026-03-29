@@ -66,6 +66,39 @@ namespace timenav {
         return false;
     }
 
+    inline dp::f64 edge_traversal_penalty(const WorkspaceIndex &index, const zoneout::UUID &edge_id) {
+        const auto *edge_data = index.edge(edge_id);
+        if (edge_data == nullptr) {
+            return std::numeric_limits<dp::f64>::infinity();
+        }
+
+        dp::Vector<ZonePolicy> zone_policies;
+        for (const auto *zone : index.zones_of_edge(edge_id)) {
+            if (zone != nullptr) {
+                zone_policies.push_back(parse_zone_policy(zone->properties()));
+            }
+        }
+
+        const auto semantics = derive_effective_edge_semantics(edge_data->properties, false, zone_policies);
+
+        dp::f64 penalty = 0.0;
+        if (semantics.cost_bias.has_value()) {
+            penalty += std::max(0.0, semantics.cost_bias.value());
+        }
+        if (semantics.speed_limit.has_value() && semantics.speed_limit.value() > 0.0) {
+            penalty += 1.0 / semantics.speed_limit.value();
+        }
+
+        for (const auto &zone_policy : zone_policies) {
+            if (zone_policy.requires_claim || zone_policy.blocks_entry_without_grant ||
+                zone_policy.blocks_traversal_without_grant) {
+                penalty += 100.0;
+            }
+        }
+
+        return penalty;
+    }
+
     class GraphTraversalAdapter {
       public:
         explicit GraphTraversalAdapter(const WorkspaceIndex &index) : index_(index) {}
@@ -194,6 +227,61 @@ namespace timenav {
                 }
 
                 const auto new_distance = current.distance + neighbor.weight;
+                const auto best_it = state.distances.find(neighbor.node_id);
+                if (best_it == state.distances.end() || new_distance < best_it->second) {
+                    state.distances[neighbor.node_id] = new_distance;
+                    state.predecessors[neighbor.node_id] = current.node_id;
+                    frontier.push(QueueEntry{neighbor.node_id, new_distance});
+                }
+            }
+        }
+
+        return state;
+    }
+
+    inline RouteSearchState shortest_path_search_with_penalties(const WorkspaceIndex &index,
+                                                                const zoneout::UUID &start_node_id,
+                                                                const zoneout::UUID &goal_node_id) {
+        struct QueueEntry {
+            zoneout::UUID node_id;
+            dp::f64 distance;
+
+            bool operator>(const QueueEntry &other) const { return distance > other.distance; }
+        };
+
+        RouteSearchState state{};
+        if (index.node(start_node_id) == nullptr || index.node(goal_node_id) == nullptr) {
+            return state;
+        }
+
+        GraphTraversalAdapter adapter{index};
+        std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<QueueEntry>> frontier;
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> visited;
+
+        state.distances[start_node_id] = 0.0;
+        frontier.push(QueueEntry{start_node_id, 0.0});
+
+        while (!frontier.empty()) {
+            const auto current = frontier.top();
+            frontier.pop();
+
+            if (!visited.insert(current.node_id).second) {
+                continue;
+            }
+
+            if (current.node_id == goal_node_id) {
+                state.found = true;
+                state.distance = current.distance;
+                return state;
+            }
+
+            for (const auto &neighbor : adapter.neighbors(current.node_id)) {
+                if (visited.count(neighbor.node_id) > 0 || is_edge_hard_blocked(index, neighbor.edge_id)) {
+                    continue;
+                }
+
+                const auto new_distance =
+                    current.distance + neighbor.weight + edge_traversal_penalty(index, neighbor.edge_id);
                 const auto best_it = state.distances.find(neighbor.node_id);
                 if (best_it == state.distances.end() || new_distance < best_it->second) {
                     state.distances[neighbor.node_id] = new_distance;
