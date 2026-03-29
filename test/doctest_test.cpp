@@ -432,6 +432,19 @@ TEST_CASE("claim manager evaluates requests against active requests and leases")
     CHECK_FALSE(grant.conflicting_lease_id.has_value());
 }
 
+TEST_CASE("claim manager releases active leases by id") {
+    timenav::ClaimManager manager{};
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{81};
+    manager.add_lease(lease);
+
+    CHECK(manager.release_lease(timenav::LeaseId{81}));
+    CHECK(manager.lease_count() == 0);
+    CHECK(manager.find_lease(timenav::LeaseId{81}) == nullptr);
+    CHECK_FALSE(manager.release_lease(timenav::LeaseId{81}));
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

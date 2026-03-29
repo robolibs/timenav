@@ -19,6 +19,16 @@ namespace timenav {
 
         void add_request(const ClaimRequest &request) { active_requests_.push_back(request); }
         void add_lease(const Lease &lease) { active_leases_.push_back(lease); }
+        [[nodiscard]] bool release_lease(LeaseId id) {
+            for (auto it = active_leases_.begin(); it != active_leases_.end(); ++it) {
+                if (it->id == id) {
+                    active_leases_.erase(it);
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         [[nodiscard]] const ClaimRequest *find_request(ClaimId id) const noexcept {
             for (const auto &request : active_requests_) {
