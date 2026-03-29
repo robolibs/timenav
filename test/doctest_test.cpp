@@ -395,19 +395,29 @@ TEST_CASE("coordinator scaffold supports rebinding and reset") {
 }
 
 TEST_CASE("vda order types expose typed defaults") {
+    const timenav::vda::ActionReference action{};
     const timenav::vda::OrderNode node{};
     const timenav::vda::OrderEdge edge{};
     const timenav::vda::Order order{};
 
+    CHECK(action.action_id.empty());
+    CHECK(action.action_type.empty());
+    CHECK_FALSE(action.blocking);
     CHECK(node.node_id.empty());
     CHECK(node.sequence_id.empty());
     CHECK_FALSE(node.released);
+    CHECK_FALSE(node.zone_id.has_value());
+    CHECK(node.actions.empty());
     CHECK(edge.edge_id.empty());
     CHECK(edge.start_node_id.empty());
     CHECK(edge.end_node_id.empty());
     CHECK_FALSE(edge.released);
+    CHECK_FALSE(edge.zone_id.has_value());
+    CHECK_FALSE(edge.max_speed.has_value());
+    CHECK(edge.actions.empty());
     CHECK(order.order_id.empty());
     CHECK(order.order_update_id == 0);
+    CHECK(order.version == "3.0.0");
     CHECK(order.nodes.empty());
     CHECK(order.edges.empty());
 }

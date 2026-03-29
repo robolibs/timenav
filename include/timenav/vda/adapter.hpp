@@ -17,15 +17,22 @@ namespace timenav::vda {
 
         dp::u32 sequence = 0;
         for (const auto &node_id : route_plan.traversed_node_ids) {
-            order.nodes.push_back(OrderNode{uuid_string(node_id), dp::String{std::to_string(sequence++)}, false});
+            OrderNode node{};
+            node.node_id = uuid_string(node_id);
+            node.sequence_id = dp::String{std::to_string(sequence++)};
+            node.released = false;
+            order.nodes.push_back(node);
         }
 
         for (dp::u64 i = 0; i < route_plan.traversed_edge_ids.size(); ++i) {
             const auto start_index = i;
             const auto end_index = i + 1;
-            order.edges.push_back(OrderEdge{uuid_string(route_plan.traversed_edge_ids[i]),
-                                            uuid_string(route_plan.traversed_node_ids[start_index]),
-                                            uuid_string(route_plan.traversed_node_ids[end_index]), false});
+            OrderEdge edge{};
+            edge.edge_id = uuid_string(route_plan.traversed_edge_ids[i]);
+            edge.start_node_id = uuid_string(route_plan.traversed_node_ids[start_index]);
+            edge.end_node_id = uuid_string(route_plan.traversed_node_ids[end_index]);
+            edge.released = false;
+            order.edges.push_back(edge);
         }
 
         return order;

@@ -1384,7 +1384,7 @@ Still missing / still weak:
 - [ ] expand state/order mappings substantially
 - [ ] keep the adapter thin while still being meaningfully `3.0.0` compatible
 
-- [ ] Slice 7.1: add `vda/order.hpp`
+- [x] Slice 7.1: add `vda/order.hpp`
 - [ ] Slice 7.2: add `vda/state.hpp`
 - [ ] Slice 7.3: add `vda/connection.hpp`
 - [ ] Slice 7.4: add `vda/instant_actions.hpp`
