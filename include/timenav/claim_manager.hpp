@@ -241,10 +241,10 @@ namespace timenav {
             return true;
         }
         [[nodiscard]] bool node_claims_compatible_with_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
-            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Node);
+            return spatial_claims_compatible_with_index(lhs, rhs, ClaimTargetKind::Node);
         }
         [[nodiscard]] bool edge_claims_compatible_with_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
-            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Edge);
+            return spatial_claims_compatible_with_index(lhs, rhs, ClaimTargetKind::Edge);
         }
         [[nodiscard]] bool zones_overlap(const zoneout::UUID &lhs_zone_id, const zoneout::UUID &rhs_zone_id) const {
             if (lhs_zone_id == rhs_zone_id) {
@@ -291,6 +291,69 @@ namespace timenav {
             const auto lhs_end = lhs.end_tick.value_or(std::numeric_limits<dp::u64>::max());
             const auto rhs_end = rhs.end_tick.value_or(std::numeric_limits<dp::u64>::max());
             return lhs_start <= rhs_end && rhs_start <= lhs_end;
+        }
+        [[nodiscard]] bool spatial_claims_compatible_with_index(const ClaimRequest &lhs, const ClaimRequest &rhs,
+                                                                ClaimTargetKind kind) const {
+            for (const auto &lhs_target : lhs.targets) {
+                if (lhs_target.kind != kind) {
+                    continue;
+                }
+
+                for (const auto &rhs_target : rhs.targets) {
+                    if (rhs_target.kind != kind) {
+                        continue;
+                    }
+                    if (!claim_windows_overlap(lhs.window, rhs.window)) {
+                        continue;
+                    }
+
+                    if (lhs_target.resource_id == rhs_target.resource_id) {
+                        if (lhs.access_mode == ClaimAccessMode::Exclusive ||
+                            rhs.access_mode == ClaimAccessMode::Exclusive) {
+                            return false;
+                        }
+                        continue;
+                    }
+
+                    if (shared_constrained_zone(kind, lhs_target.resource_id, rhs_target.resource_id)) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+        [[nodiscard]] bool shared_constrained_zone(ClaimTargetKind kind, const zoneout::UUID &lhs_resource_id,
+                                                   const zoneout::UUID &rhs_resource_id) const {
+            const auto lhs_zones = kind == ClaimTargetKind::Node ? index_->zones_of_node(lhs_resource_id)
+                                                                 : index_->zones_of_edge(lhs_resource_id);
+            const auto rhs_zones = kind == ClaimTargetKind::Node ? index_->zones_of_node(rhs_resource_id)
+                                                                 : index_->zones_of_edge(rhs_resource_id);
+
+            for (const auto *lhs_zone : lhs_zones) {
+                if (lhs_zone == nullptr) {
+                    continue;
+                }
+                const auto lhs_policy = parse_zone_policy(lhs_zone->properties());
+
+                for (const auto *rhs_zone : rhs_zones) {
+                    if (rhs_zone == nullptr || lhs_zone->id() != rhs_zone->id()) {
+                        continue;
+                    }
+
+                    const auto rhs_policy = parse_zone_policy(rhs_zone->properties());
+                    const auto effective_capacity = std::min(lhs_policy.capacity, rhs_policy.capacity);
+                    const bool explicitly_constrained =
+                        lhs_policy.capacity_is_explicit || rhs_policy.capacity_is_explicit;
+                    if (lhs_policy.kind == ZonePolicyKind::ExclusiveAccess ||
+                        rhs_policy.kind == ZonePolicyKind::ExclusiveAccess ||
+                        (explicitly_constrained && effective_capacity <= 1)) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
         [[nodiscard]] static bool target_kind_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs,
                                                          ClaimTargetKind kind) noexcept {

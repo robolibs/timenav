@@ -963,6 +963,47 @@ TEST_CASE("edge and node claim compatibility detect overlapping exclusive target
     CHECK(timenav::ClaimManager::claims_compatible(lhs, disjoint));
 }
 
+TEST_CASE("edge and node claim evaluation respects constrained shared zones") {
+    auto fixture = make_test_workspace();
+    auto &child_a = fixture.workspace.root_zone().children()[0];
+    child_a.set_property("traffic.mode", "exclusive");
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager manager{index};
+
+    timenav::ClaimRequest baseline_node{};
+    baseline_node.id = timenav::ClaimId{801};
+    baseline_node.access_mode = timenav::ClaimAccessMode::Shared;
+    baseline_node.window.start_tick = 0;
+    baseline_node.window.end_tick = 10;
+    baseline_node.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, fixture.node_a_id});
+    manager.add_request(baseline_node);
+
+    timenav::ClaimRequest same_lane_node = baseline_node;
+    same_lane_node.id = timenav::ClaimId{802};
+    same_lane_node.targets[0].resource_id = fixture.node_b_id;
+
+    timenav::ClaimRequest other_lane_node = baseline_node;
+    other_lane_node.id = timenav::ClaimId{803};
+    other_lane_node.targets[0].resource_id = fixture.node_c_id;
+
+    timenav::ClaimRequest baseline_edge{};
+    baseline_edge.id = timenav::ClaimId{804};
+    baseline_edge.access_mode = timenav::ClaimAccessMode::Shared;
+    baseline_edge.window.start_tick = 0;
+    baseline_edge.window.end_tick = 10;
+    baseline_edge.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_ab_id});
+    manager.add_request(baseline_edge);
+
+    timenav::ClaimRequest same_lane_edge = baseline_edge;
+    same_lane_edge.id = timenav::ClaimId{805};
+    same_lane_edge.targets[0].resource_id = fixture.edge_bc_id;
+
+    CHECK(manager.evaluate_request(same_lane_node).decision == timenav::ClaimDecision::Deny);
+    CHECK(manager.evaluate_request(other_lane_node).decision == timenav::ClaimDecision::Grant);
+    CHECK(manager.evaluate_request(same_lane_edge).decision == timenav::ClaimDecision::Deny);
+}
+
 TEST_CASE("claim manager evaluates requests against active requests and leases") {
     timenav::ClaimManager manager{};
     const auto shared_zone = zoneout::UUID("90909090-9090-4090-8090-909090909090");
