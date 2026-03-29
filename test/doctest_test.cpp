@@ -231,6 +231,29 @@ TEST_CASE("edge traffic semantics parser reads known edge traffic keys") {
     CHECK(semantics.properties.size() == properties.size());
 }
 
+TEST_CASE("traffic parsing utilities parse booleans numbers and strings") {
+    const auto bool_value = timenav::parse_traffic_bool("true");
+    REQUIRE(bool_value.is_ok());
+    CHECK(bool_value.value());
+
+    const auto integer_value = timenav::parse_traffic_u64("42");
+    REQUIRE(integer_value.is_ok());
+    CHECK(integer_value.value() == 42);
+
+    const auto number_value = timenav::parse_traffic_f64("2.75");
+    REQUIRE(number_value.is_ok());
+    CHECK(number_value.value() == doctest::Approx(2.75));
+
+    const auto string_value = timenav::parse_traffic_string("corridor");
+    REQUIRE(string_value.is_ok());
+    CHECK(string_value.value() == "corridor");
+
+    CHECK(timenav::parse_traffic_bool("sometimes").is_err());
+    CHECK(timenav::parse_traffic_u64("forty-two").is_err());
+    CHECK(timenav::parse_traffic_f64("fast").is_err());
+    CHECK(timenav::parse_traffic_string("").is_err());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};

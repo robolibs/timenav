@@ -114,6 +114,40 @@ namespace timenav {
 
     } // namespace detail
 
+    inline dp::Result<bool> parse_traffic_bool(std::string_view value) {
+        const auto parsed = detail::parse_bool_relaxed(std::string(value));
+        if (!parsed.has_value()) {
+            return dp::Result<bool>::err(
+                dp::Error::parse_error(dp::String::format("invalid boolean traffic value: %s", value.data())));
+        }
+        return dp::Result<bool>::ok(*parsed);
+    }
+
+    inline dp::Result<dp::u64> parse_traffic_u64(std::string_view value) {
+        const auto parsed = detail::parse_u64_relaxed(std::string(value));
+        if (!parsed.has_value()) {
+            return dp::Result<dp::u64>::err(
+                dp::Error::parse_error(dp::String::format("invalid unsigned traffic value: %s", value.data())));
+        }
+        return dp::Result<dp::u64>::ok(*parsed);
+    }
+
+    inline dp::Result<dp::f64> parse_traffic_f64(std::string_view value) {
+        const auto parsed = detail::parse_f64_relaxed(std::string(value));
+        if (!parsed.has_value()) {
+            return dp::Result<dp::f64>::err(
+                dp::Error::parse_error(dp::String::format("invalid numeric traffic value: %s", value.data())));
+        }
+        return dp::Result<dp::f64>::ok(*parsed);
+    }
+
+    inline dp::Result<dp::String> parse_traffic_string(std::string_view value) {
+        if (value.empty()) {
+            return dp::Result<dp::String>::err(dp::Error::parse_error("traffic string value must not be empty"));
+        }
+        return dp::Result<dp::String>::ok(dp::String{value.data()});
+    }
+
     inline ZonePolicy parse_zone_policy(const std::unordered_map<std::string, std::string> &properties) {
         ZonePolicy policy{};
 
@@ -123,39 +157,54 @@ namespace timenav {
             if (key == "traffic.policy") {
                 policy.kind = detail::parse_zone_policy_kind(value);
             } else if (key == "traffic.capacity") {
-                const auto parsed = detail::parse_u64_relaxed(value);
-                if (parsed.has_value() && *parsed >= 1) {
-                    policy.capacity = *parsed;
-                    if (*parsed > 1 && policy.kind == ZonePolicyKind::Informational) {
+                const auto parsed = parse_traffic_u64(value);
+                if (parsed.is_ok() && parsed.value() >= 1) {
+                    policy.capacity = parsed.value();
+                    if (parsed.value() > 1 && policy.kind == ZonePolicyKind::Informational) {
                         policy.kind = ZonePolicyKind::CapacityLimited;
                     }
                 }
             } else if (key == "traffic.claim_required") {
-                const auto parsed = detail::parse_bool_relaxed(value);
-                if (parsed.has_value()) {
-                    policy.requires_claim = *parsed;
-                    policy.blocks_entry_without_grant = *parsed;
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.requires_claim = parsed.value();
+                    policy.blocks_entry_without_grant = parsed.value();
                 }
             } else if (key == "traffic.blocked") {
-                const auto parsed = detail::parse_bool_relaxed(value);
-                if (parsed.has_value()) {
-                    policy.blocked = *parsed;
-                    if (*parsed) {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.blocked = parsed.value();
+                    if (parsed.value()) {
                         policy.kind = ZonePolicyKind::Restricted;
                         policy.blocks_entry_without_grant = true;
                         policy.blocks_traversal_without_grant = true;
                     }
                 }
             } else if (key == "traffic.priority") {
-                policy.priority = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    policy.priority = parsed.value();
+                }
             } else if (key == "traffic.speed_limit") {
-                policy.speed_limit = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    policy.speed_limit = parsed.value();
+                }
             } else if (key == "traffic.waiting_allowed") {
-                policy.waiting_allowed = detail::parse_bool_relaxed(value);
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.waiting_allowed = parsed.value();
+                }
             } else if (key == "traffic.stop_allowed") {
-                policy.stop_allowed = detail::parse_bool_relaxed(value);
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.stop_allowed = parsed.value();
+                }
             } else if (key == "traffic.replan_trigger") {
-                policy.replan_trigger = detail::parse_bool_relaxed(value);
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.replan_trigger = parsed.value();
+                }
                 if (policy.replan_trigger.value_or(false)) {
                     policy.kind = ZonePolicyKind::Replanning;
                 }
@@ -185,21 +234,42 @@ namespace timenav {
             semantics.properties[dp::String{key}] = dp::String{value};
 
             if (key == "traffic.speed_limit") {
-                semantics.speed_limit = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    semantics.speed_limit = parsed.value();
+                }
             } else if (key == "traffic.lane_type") {
                 semantics.lane_type = dp::String{value};
             } else if (key == "traffic.reversible") {
-                semantics.reversible = detail::parse_bool_relaxed(value);
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.reversible = parsed.value();
+                }
             } else if (key == "traffic.passing_allowed") {
-                semantics.passing_allowed = detail::parse_bool_relaxed(value);
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.passing_allowed = parsed.value();
+                }
             } else if (key == "traffic.priority") {
-                semantics.priority = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    semantics.priority = parsed.value();
+                }
             } else if (key == "traffic.capacity") {
-                semantics.capacity = detail::parse_u64_relaxed(value);
+                const auto parsed = parse_traffic_u64(value);
+                if (parsed.is_ok()) {
+                    semantics.capacity = parsed.value();
+                }
             } else if (key == "traffic.clearance_width") {
-                semantics.clearance_width = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    semantics.clearance_width = parsed.value();
+                }
             } else if (key == "traffic.clearance_height") {
-                semantics.clearance_height = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    semantics.clearance_height = parsed.value();
+                }
             } else if (key == "traffic.surface_type") {
                 semantics.surface_type = dp::String{value};
             } else if (key == "traffic.robot_class") {
@@ -207,9 +277,15 @@ namespace timenav {
             } else if (key == "traffic.allowed_payload") {
                 semantics.allowed_payload = dp::String{value};
             } else if (key == "traffic.cost_bias") {
-                semantics.cost_bias = detail::parse_f64_relaxed(value);
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_ok()) {
+                    semantics.cost_bias = parsed.value();
+                }
             } else if (key == "traffic.no_stop") {
-                semantics.no_stop = detail::parse_bool_relaxed(value);
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.no_stop = parsed.value();
+                }
             } else if (key == "traffic.preferred_direction") {
                 semantics.preferred_direction = dp::String{value};
             }
