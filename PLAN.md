@@ -86,7 +86,10 @@ And should **not** focus on:
 Current repo state:
 
 - header-only scaffold
-- no real implementation yet
+- partial implementation exists already
+- current code is **not finished**
+- several planned headers exist in thin or incomplete form
+- some milestones are only partially represented in code and still need substantial work
 - dependencies already include:
   - `zoneout`
   - `graphix`
@@ -96,6 +99,23 @@ Current repo state:
   - `optinum`
 
 This is good enough to start the real design.
+
+### Current Status Warning
+
+The presence of headers in `include/timenav/` does **not** mean the design is complete.
+
+Current reality:
+
+- some foundational pieces already exist
+- some later-phase pieces also exist in early/thin form
+- implementation depth is uneven
+- several files need to be revisited to match the architecture described here
+
+So this plan should be treated as:
+
+- the target architecture
+- the milestone checklist
+- and the gap list for unfinished areas
 
 ---
 
@@ -1180,6 +1200,13 @@ Tasks:
 
 This section is the actual implementation checklist.
 
+Important:
+
+- the current repository contains partial implementations of several slices below
+- those existing files should **not** be treated as meaning the milestones are done
+- a slice should only be checked when it is complete to the standard described in this plan
+- for now, the checklist is intentionally reset to unfinished
+
 Rules:
 
 - each slice should be small enough for one focused commit
@@ -1195,94 +1222,178 @@ Target:
 
 ### Milestone 1: Workspace Index Foundation
 
-- [x] Slice 1.1: add `ids.hpp` with strong id wrappers for robot, mission, claim, and lease ids
-- [x] Slice 1.2: switch the new ids to preferred `dp::` scalar/string types where applicable
-- [x] Slice 1.3: add `workspace_index.hpp` scaffold and empty `WorkspaceIndex` type
-- [x] Slice 1.4: add workspace ownership/reference handling in `WorkspaceIndex`
-- [x] Slice 1.5: add zone lookup by UUID
-- [x] Slice 1.6: add node lookup by UUID
-- [x] Slice 1.7: add edge lookup by UUID
-- [x] Slice 1.8: add parent-zone lookup and child-zone lookup
-- [x] Slice 1.9: add ancestor-zone and descendant-zone traversal helpers
-- [x] Slice 1.10: add initial tests for basic workspace indexing and UUID resolution
+Current state:
+
+- partial implementation exists
+- still needs hardening and completion before this milestone should be considered done
+
+Still missing / still weak:
+
+- [ ] align remaining internals more consistently with `dp::` conventions
+- [ ] harden validation coverage and failure reporting
+- [ ] verify reference / coord-mode handling against all intended `zoneout` workflows
+- [ ] add stronger test coverage for malformed memberships and invalid references
+
+- [ ] Slice 1.1: add `ids.hpp` with strong id wrappers for robot, mission, claim, and lease ids
+- [ ] Slice 1.2: switch the new ids to preferred `dp::` scalar/string types where applicable
+- [ ] Slice 1.3: add `workspace_index.hpp` scaffold and empty `WorkspaceIndex` type
+- [ ] Slice 1.4: add workspace ownership/reference handling in `WorkspaceIndex`
+- [ ] Slice 1.5: add zone lookup by UUID
+- [ ] Slice 1.6: add node lookup by UUID
+- [ ] Slice 1.7: add edge lookup by UUID
+- [ ] Slice 1.8: add parent-zone lookup and child-zone lookup
+- [ ] Slice 1.9: add ancestor-zone and descendant-zone traversal helpers
+- [ ] Slice 1.10: add initial tests for basic workspace indexing and UUID resolution
 
 ### Milestone 2: Membership And Spatial Semantics
 
-- [x] Slice 2.1: add `nodes_in_zone(zone_id)` query
-- [x] Slice 2.2: add `zones_of_node(node_id)` query
-- [x] Slice 2.3: add `zones_of_edge(edge_id)` query
-- [x] Slice 2.4: add `edge_between(node_a, node_b)` query
-- [x] Slice 2.5: expose workspace `ref` through the index
-- [x] Slice 2.6: expose workspace `coord_mode` through the index
-- [x] Slice 2.7: add `concord::`-based helpers for local/global conversions inside the indexing layer
-- [x] Slice 2.8: add property-read helpers for zones and edges
-- [x] Slice 2.9: add validation helpers for missing ids / broken memberships / invalid references
-- [x] Slice 2.10: add tests for memberships, hierarchy traversal, and local/global coordinate access
+Current state:
+
+- partial implementation exists
+- still needs coverage and behavioral tightening
+
+Still missing / still weak:
+
+- [ ] verify all coordinate transforms go through `concord::` only
+- [ ] tighten local/global workflow validation
+- [ ] add stronger edge-membership and hierarchy consistency tests
+- [ ] document exact behavior when `coord_mode` and `ref` do not agree
+
+- [ ] Slice 2.1: add `nodes_in_zone(zone_id)` query
+- [ ] Slice 2.2: add `zones_of_node(node_id)` query
+- [ ] Slice 2.3: add `zones_of_edge(edge_id)` query
+- [ ] Slice 2.4: add `edge_between(node_a, node_b)` query
+- [ ] Slice 2.5: expose workspace `ref` through the index
+- [ ] Slice 2.6: expose workspace `coord_mode` through the index
+- [ ] Slice 2.7: add `concord::`-based helpers for local/global conversions inside the indexing layer
+- [ ] Slice 2.8: add property-read helpers for zones and edges
+- [ ] Slice 2.9: add validation helpers for missing ids / broken memberships / invalid references
+- [ ] Slice 2.10: add tests for memberships, hierarchy traversal, and local/global coordinate access
 
 ### Milestone 3: Zone Policy And Property Parsing
 
+Current state:
+
+- partial implementation exists
+- parser/semantics are present but not yet complete to plan level
+
+Still missing / still weak:
+
+- [ ] cover the full agreed `traffic.*` property set
+- [ ] finish stable validation/warning API for malformed property values
+- [ ] verify merge/inheritance rules exactly match the intended hierarchy semantics
+- [ ] cross-check parsing against the UI property editors now in use
+
 - [x] Slice 3.1: add `zone_policy.hpp` with typed zone policy enums and structs
-- [x] Slice 3.2: add typed edge-traffic semantics struct for parsed edge properties
-- [x] Slice 3.3: add parser for known `zone.properties` traffic keys
-- [x] Slice 3.4: add parser for known `edge.properties` traffic keys
-- [x] Slice 3.5: add boolean/number/string parsing utilities for traffic properties
-- [x] Slice 3.6: add validation errors/warnings for malformed traffic property values
-- [x] Slice 3.7: add effective-policy merge rules for nested zones
-- [x] Slice 3.8: add effective edge semantics derivation combining structural fields and properties
-- [x] Slice 3.9: add tests for property parsing, bad values, and inheritance/override rules
-- [x] Slice 3.10: add documentation comments/examples for the supported `traffic.*` keys
+- [ ] Slice 3.2: add typed edge-traffic semantics struct for parsed edge properties
+- [ ] Slice 3.3: add parser for known `zone.properties` traffic keys
+- [ ] Slice 3.4: add parser for known `edge.properties` traffic keys
+- [ ] Slice 3.5: add boolean/number/string parsing utilities for traffic properties
+- [ ] Slice 3.6: add validation errors/warnings for malformed traffic property values
+- [ ] Slice 3.7: add effective-policy merge rules for nested zones
+- [ ] Slice 3.8: add effective edge semantics derivation combining structural fields and properties
+- [ ] Slice 3.9: add tests for property parsing, bad values, and inheritance/override rules
+- [ ] Slice 3.10: add documentation comments/examples for the supported `traffic.*` keys
 
 ### Milestone 4: Routing And Planning
 
-- [x] Slice 4.1: add `route.hpp` with route step and route plan types
-- [x] Slice 4.2: add graph traversal adapter over the `zoneout` graph
-- [x] Slice 4.3: add basic shortest-path search without traffic constraints
-- [x] Slice 4.4: add route reconstruction from predecessor state
-- [x] Slice 4.5: add route cost accumulation from edge weight
-- [x] Slice 4.6: add edge blocking from hard zone/edge policy
-- [x] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
-- [x] Slice 4.8: add extraction of traversed nodes / edges / zones from a route
-- [x] Slice 4.9: add failure reporting for unreachable routes and policy-blocked routes
-- [x] Slice 4.10: add planner tests on small workspace fixtures with blocked and allowed alternatives
+Current state:
+
+- partial implementation exists
+- planner behavior still needs more depth and validation
+
+Still missing / still weak:
+
+- [ ] verify directionality handling exactly for all edge cases
+- [ ] deepen route cost modeling from traffic properties
+- [ ] improve diagnostics for blocked vs unreachable routes
+- [ ] add richer fixtures with overlapping zones, lane rules, and planner tradeoffs
+
+- [ ] Slice 4.1: add `route.hpp` with route step and route plan types
+- [ ] Slice 4.2: add graph traversal adapter over the `zoneout` graph
+- [ ] Slice 4.3: add basic shortest-path search without traffic constraints
+- [ ] Slice 4.4: add route reconstruction from predecessor state
+- [ ] Slice 4.5: add route cost accumulation from edge weight
+- [ ] Slice 4.6: add edge blocking from hard zone/edge policy
+- [ ] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
+- [ ] Slice 4.8: add extraction of traversed nodes / edges / zones from a route
+- [ ] Slice 4.9: add failure reporting for unreachable routes and policy-blocked routes
+- [ ] Slice 4.10: add planner tests on small workspace fixtures with blocked and allowed alternatives
 
 ### Milestone 5: Claims, Leases, And Conflicts
 
-- [x] Slice 5.1: add `claim.hpp` with request, lease, and target types
-- [x] Slice 5.2: add `claim_manager.hpp` scaffold
-- [x] Slice 5.3: add storage for active claim requests
-- [x] Slice 5.4: add storage for granted leases
-- [x] Slice 5.5: add compatibility matrix for zone claims
-- [x] Slice 5.6: add compatibility matrix for edge and node claims
-- [x] Slice 5.7: add claim grant/deny evaluation
-- [x] Slice 5.8: add lease release path
-- [x] Slice 5.9: add lease expiry handling
-- [x] Slice 5.10: add tests for conflicting and non-conflicting claim scenarios
+Current state:
+
+- partial implementation exists
+- conflict/lease behavior is present but still too shallow to call complete
+
+Still missing / still weak:
+
+- [ ] reflect real traffic semantics, not only simple exclusivity checks
+- [ ] improve denial/conflict explanations
+- [ ] deepen capacity-limited resource handling
+- [ ] connect lease behavior more tightly to coordinator/scheduler expectations
+
+- [ ] Slice 5.1: add `claim.hpp` with request, lease, and target types
+- [ ] Slice 5.2: add `claim_manager.hpp` scaffold
+- [ ] Slice 5.3: add storage for active claim requests
+- [ ] Slice 5.4: add storage for granted leases
+- [ ] Slice 5.5: add compatibility matrix for zone claims
+- [ ] Slice 5.6: add compatibility matrix for edge and node claims
+- [ ] Slice 5.7: add claim grant/deny evaluation
+- [ ] Slice 5.8: add lease release path
+- [ ] Slice 5.9: add lease expiry handling
+- [ ] Slice 5.10: add tests for conflicting and non-conflicting claim scenarios
 
 ### Milestone 6: Scheduling And Coordination
 
-- [x] Slice 6.1: add `robot_state.hpp` with robot runtime state
-- [x] Slice 6.2: add `coordinator.hpp` scaffold
-- [x] Slice 6.3: add robot registration/state tracking
-- [x] Slice 6.4: add route-to-claim derivation helpers
-- [x] Slice 6.5: add rolling-horizon claim generation
-- [x] Slice 6.6: add progress updates by current node / edge
-- [x] Slice 6.7: add release-behind behavior after progress updates
-- [x] Slice 6.8: add basic schedule-window checks from zone properties
-- [x] Slice 6.9: add simple priority/right-of-way arbitration hooks
-- [x] Slice 6.10: add tests for multi-robot progress, release, and scheduling conflicts
+Current state:
+
+- partial implementation exists
+- scheduling is still light and should not be treated as finished
+
+Still missing / still weak:
+
+- [ ] build a stronger time-scheduling model beyond simple window checks
+- [ ] deepen priority/right-of-way behavior
+- [ ] add queueing and reservation-window logic
+- [ ] define richer robot progress/state lifecycle behavior
+
+- [ ] Slice 6.1: add `robot_state.hpp` with robot runtime state
+- [ ] Slice 6.2: add `coordinator.hpp` scaffold
+- [ ] Slice 6.3: add robot registration/state tracking
+- [ ] Slice 6.4: add route-to-claim derivation helpers
+- [ ] Slice 6.5: add rolling-horizon claim generation
+- [ ] Slice 6.6: add progress updates by current node / edge
+- [ ] Slice 6.7: add release-behind behavior after progress updates
+- [ ] Slice 6.8: add basic schedule-window checks from zone properties
+- [ ] Slice 6.9: add simple priority/right-of-way arbitration hooks
+- [ ] Slice 6.10: add tests for multi-robot progress, release, and scheduling conflicts
 
 ### Milestone 7: VDA5050 3.0.0 Compatibility Layer
 
-- [x] Slice 7.1: add `vda/order.hpp`
-- [x] Slice 7.2: add `vda/state.hpp`
-- [x] Slice 7.3: add `vda/connection.hpp`
-- [x] Slice 7.4: add `vda/instant_actions.hpp`
-- [x] Slice 7.5: add `vda/factsheet.hpp`
-- [x] Slice 7.6: add `vda/responses.hpp`
-- [x] Slice 7.7: add `vda/adapter.hpp`
-- [x] Slice 7.8: map internal route plans to VDA order-compatible objects
-- [x] Slice 7.9: map internal runtime/claim state to VDA state-compatible objects
-- [x] Slice 7.10: add tests for VDA `3.0.0` compatibility mappings
+Current state:
+
+- partial implementation exists
+- current VDA compatibility headers are especially thin relative to the plan
+
+Still missing / still weak:
+
+- [ ] align compatibility structs more closely with VDA5050 `3.0.0`
+- [ ] add missing zone/edge request concepts where relevant
+- [ ] expand state/order mappings substantially
+- [ ] keep the adapter thin while still being meaningfully `3.0.0` compatible
+
+- [ ] Slice 7.1: add `vda/order.hpp`
+- [ ] Slice 7.2: add `vda/state.hpp`
+- [ ] Slice 7.3: add `vda/connection.hpp`
+- [ ] Slice 7.4: add `vda/instant_actions.hpp`
+- [ ] Slice 7.5: add `vda/factsheet.hpp`
+- [ ] Slice 7.6: add `vda/responses.hpp`
+- [ ] Slice 7.7: add `vda/adapter.hpp`
+- [ ] Slice 7.8: map internal route plans to VDA order-compatible objects
+- [ ] Slice 7.9: map internal runtime/claim state to VDA state-compatible objects
+- [ ] Slice 7.10: add tests for VDA `3.0.0` compatibility mappings
 
 This gives at least **70** possible slices. You do not have to implement all of them immediately, but the first **50** are already naturally available by stopping somewhere in milestone 6 or early milestone 7.
 

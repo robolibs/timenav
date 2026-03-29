@@ -30,6 +30,7 @@ namespace timenav {
     struct ZonePolicy {
         ZonePolicyKind kind = ZonePolicyKind::Informational;
         dp::u64 capacity = 1;
+        bool capacity_is_explicit = false;
         bool requires_claim = false;
         bool blocks_traversal_without_grant = false;
         bool blocks_entry_without_grant = false;

@@ -1160,6 +1160,7 @@ TEST_CASE("zone policy exposes typed defaults") {
 
     CHECK(policy.kind == timenav::ZonePolicyKind::Informational);
     CHECK(policy.capacity == 1);
+    CHECK_FALSE(policy.capacity_is_explicit);
     CHECK_FALSE(policy.requires_claim);
     CHECK_FALSE(policy.blocks_traversal_without_grant);
     CHECK_FALSE(policy.blocks_entry_without_grant);
