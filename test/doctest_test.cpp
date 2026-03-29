@@ -136,6 +136,49 @@ TEST_CASE("edge traffic semantics exposes typed defaults") {
     CHECK(semantics.properties.empty());
 }
 
+TEST_CASE("zone policy parser reads known zone traffic keys") {
+    const std::unordered_map<std::string, std::string> properties = {
+        {"traffic.policy", "exclusive"},
+        {"traffic.capacity", "3"},
+        {"traffic.claim_required", "true"},
+        {"traffic.priority", "7.5"},
+        {"traffic.speed_limit", "1.2"},
+        {"traffic.waiting_allowed", "false"},
+        {"traffic.stop_allowed", "true"},
+        {"traffic.entry_rule", "badge_check"},
+        {"traffic.exit_rule", "gate_release"},
+        {"traffic.robot_class", "forklift"},
+        {"traffic.schedule_window", "weekday_day"},
+        {"traffic.access_group", "ops"},
+    };
+
+    const auto policy = timenav::parse_zone_policy(properties);
+
+    CHECK(policy.kind == timenav::ZonePolicyKind::ExclusiveAccess);
+    CHECK(policy.capacity == 3);
+    CHECK(policy.requires_claim);
+    CHECK(policy.blocks_entry_without_grant);
+    REQUIRE(policy.priority.has_value());
+    CHECK(policy.priority.value() == doctest::Approx(7.5));
+    REQUIRE(policy.speed_limit.has_value());
+    CHECK(policy.speed_limit.value() == doctest::Approx(1.2));
+    REQUIRE(policy.waiting_allowed.has_value());
+    CHECK_FALSE(policy.waiting_allowed.value());
+    REQUIRE(policy.stop_allowed.has_value());
+    CHECK(policy.stop_allowed.value());
+    REQUIRE(policy.entry_rule.has_value());
+    CHECK(policy.entry_rule.value() == "badge_check");
+    REQUIRE(policy.exit_rule.has_value());
+    CHECK(policy.exit_rule.value() == "gate_release");
+    REQUIRE(policy.robot_class.has_value());
+    CHECK(policy.robot_class.value() == "forklift");
+    REQUIRE(policy.schedule_window.has_value());
+    CHECK(policy.schedule_window.value() == "weekday_day");
+    REQUIRE(policy.access_group.has_value());
+    CHECK(policy.access_group.value() == "ops");
+    CHECK(policy.properties.size() == properties.size());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};
