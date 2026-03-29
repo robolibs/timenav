@@ -24,3 +24,9 @@ TEST_CASE("timenav ids use datapod strong scalar types") {
     CHECK(std::is_base_of_v<dp::Strong<dp::u64, timenav::detail::RobotIdTag>, timenav::RobotId>);
     CHECK(robot_id.raw() == static_cast<dp::u64>(42));
 }
+
+TEST_CASE("workspace index scaffold can be default constructed") {
+    const timenav::WorkspaceIndex index{};
+
+    CHECK(index.empty());
+}
