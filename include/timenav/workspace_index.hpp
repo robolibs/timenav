@@ -109,6 +109,26 @@ namespace timenav {
 
             return edge_zones;
         }
+        [[nodiscard]] const zoneout::EdgeData *edge_between(const zoneout::UUID &node_a_id,
+                                                            const zoneout::UUID &node_b_id) const noexcept {
+            if (workspace_ == nullptr) {
+                return nullptr;
+            }
+
+            const auto node_a_it = nodes_.find(node_a_id);
+            const auto node_b_it = nodes_.find(node_b_id);
+            if (node_a_it == nodes_.end() || node_b_it == nodes_.end()) {
+                return nullptr;
+            }
+
+            const auto edge_id = workspace_->graph().get_edge(node_a_it->second, node_b_it->second);
+            if (edge_id.has_value()) {
+                return &workspace_->graph().edge_property(*edge_id);
+            }
+
+            const auto reverse_edge_id = workspace_->graph().get_edge(node_b_it->second, node_a_it->second);
+            return reverse_edge_id.has_value() ? &workspace_->graph().edge_property(*reverse_edge_id) : nullptr;
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();

@@ -346,3 +346,17 @@ TEST_CASE("workspace index lists zones for each edge") {
 
     CHECK(index.zones_of_edge(zoneout::UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")).empty());
 }
+
+TEST_CASE("workspace index resolves an edge between two nodes") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    REQUIRE(index.edge_between(fixture.node_a_id, fixture.node_b_id) != nullptr);
+    CHECK(index.edge_between(fixture.node_a_id, fixture.node_b_id)->id == fixture.edge_ab_id);
+    REQUIRE(index.edge_between(fixture.node_b_id, fixture.node_c_id) != nullptr);
+    CHECK(index.edge_between(fixture.node_b_id, fixture.node_c_id)->id == fixture.edge_bc_id);
+    REQUIRE(index.edge_between(fixture.node_b_id, fixture.node_a_id) != nullptr);
+    CHECK(index.edge_between(fixture.node_b_id, fixture.node_a_id)->id == fixture.edge_ab_id);
+    CHECK(index.edge_between(fixture.node_a_id, fixture.node_c_id) == nullptr);
+    CHECK(index.edge_between(fixture.node_a_id, zoneout::UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")) == nullptr);
+}
