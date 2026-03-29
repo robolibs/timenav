@@ -1274,7 +1274,7 @@ Target:
 ### Milestone 7: VDA5050 3.0.0 Compatibility Layer
 
 - [x] Slice 7.1: add `vda/order.hpp`
-- [ ] Slice 7.2: add `vda/state.hpp`
+- [x] Slice 7.2: add `vda/state.hpp`
 - [ ] Slice 7.3: add `vda/connection.hpp`
 - [ ] Slice 7.4: add `vda/instant_actions.hpp`
 - [ ] Slice 7.5: add `vda/factsheet.hpp`

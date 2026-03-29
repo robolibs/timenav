@@ -339,6 +339,16 @@ TEST_CASE("vda order types expose typed defaults") {
     CHECK(order.edges.empty());
 }
 
+TEST_CASE("vda state types expose typed defaults") {
+    const timenav::vda::State state{};
+
+    CHECK(state.agv_id.empty());
+    CHECK(state.operating_mode.empty());
+    CHECK_FALSE(state.last_node_id.has_value());
+    CHECK_FALSE(state.last_edge_id.has_value());
+    CHECK(state.errors.empty());
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
