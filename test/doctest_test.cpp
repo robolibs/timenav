@@ -1005,9 +1005,11 @@ TEST_CASE("edge and node claim evaluation respects constrained shared zones") {
 }
 
 TEST_CASE("claim manager evaluates requests against active requests and leases") {
-    timenav::ClaimManager manager{};
-    const auto shared_zone = zoneout::UUID("90909090-9090-4090-8090-909090909090");
-    const auto free_zone = zoneout::UUID("a0a0a0a0-a0a0-40a0-80a0-a0a0a0a0a0a0");
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager manager{index};
+    const auto shared_zone = fixture.workspace.root_zone().children()[0].id();
+    const auto free_zone = fixture.workspace.root_zone().children()[1].id();
 
     timenav::ClaimRequest active_request{};
     active_request.id = timenav::ClaimId{61};
@@ -1034,8 +1036,7 @@ TEST_CASE("claim manager evaluates requests against active requests and leases")
     timenav::ClaimRequest granted{};
     granted.id = timenav::ClaimId{64};
     granted.access_mode = timenav::ClaimAccessMode::Shared;
-    granted.targets.push_back(
-        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zoneout::UUID("b0b0b0b0-b0b0-40b0-80b0-b0b0b0b0b0b0")});
+    granted.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, fixture.node_c_id});
 
     const auto request_conflict = manager.evaluate_request(denied_by_request);
     const auto lease_conflict = manager.evaluate_request(denied_by_lease);
@@ -1044,12 +1045,41 @@ TEST_CASE("claim manager evaluates requests against active requests and leases")
     CHECK(request_conflict.decision == timenav::ClaimDecision::Deny);
     REQUIRE(request_conflict.conflicting_claim_id.has_value());
     CHECK(request_conflict.conflicting_claim_id.value() == timenav::ClaimId{61});
+    REQUIRE(request_conflict.conflicting_targets.size() == 1);
+    CHECK(request_conflict.conflicting_targets[0].resource_id == shared_zone);
     CHECK(lease_conflict.decision == timenav::ClaimDecision::Deny);
     REQUIRE(lease_conflict.conflicting_lease_id.has_value());
     CHECK(lease_conflict.conflicting_lease_id.value() == timenav::LeaseId{71});
+    REQUIRE(lease_conflict.conflicting_targets.size() == 1);
+    CHECK(lease_conflict.conflicting_targets[0].resource_id == free_zone);
     CHECK(grant.decision == timenav::ClaimDecision::Grant);
     CHECK_FALSE(grant.conflicting_claim_id.has_value());
     CHECK_FALSE(grant.conflicting_lease_id.has_value());
+    CHECK(grant.conflicting_targets.empty());
+}
+
+TEST_CASE("claim manager denies empty or invalid claim requests") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager manager{index};
+
+    timenav::ClaimRequest empty_request{};
+    empty_request.id = timenav::ClaimId{611};
+
+    timenav::ClaimRequest invalid_request{};
+    invalid_request.id = timenav::ClaimId{612};
+    invalid_request.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zoneout::UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")});
+
+    const auto empty_eval = manager.evaluate_request(empty_request);
+    const auto invalid_eval = manager.evaluate_request(invalid_request);
+
+    CHECK(empty_eval.decision == timenav::ClaimDecision::Deny);
+    CHECK(empty_eval.reason.find("does not contain any targets") != dp::String::npos);
+    CHECK(invalid_eval.decision == timenav::ClaimDecision::Deny);
+    REQUIRE(invalid_eval.conflicting_targets.size() == 1);
+    CHECK(invalid_eval.conflicting_targets[0].resource_id ==
+          zoneout::UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"));
 }
 
 TEST_CASE("claim manager releases active leases by id") {

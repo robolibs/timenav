@@ -157,17 +157,31 @@ namespace timenav {
         }
 
         [[nodiscard]] ClaimEvaluation evaluate_request(const ClaimRequest &request) const {
+            if (request.targets.empty()) {
+                return ClaimEvaluation{ClaimDecision::Deny,
+                                       dp::String{"claim request does not contain any targets"},
+                                       dp::nullopt,
+                                       dp::nullopt,
+                                       {}};
+            }
+
+            if (const auto invalid_target = first_invalid_target(request); invalid_target.has_value()) {
+                return ClaimEvaluation{ClaimDecision::Deny,
+                                       dp::String{"claim request references a missing workspace resource"},
+                                       dp::nullopt,
+                                       dp::nullopt,
+                                       {invalid_target.value()}};
+            }
+
             for (const auto &active_request : active_requests_) {
                 if (active_request.id == request.id) {
                     continue;
                 }
 
                 if (!claims_compatible_for_current_index(request, active_request)) {
-                    return ClaimEvaluation{ClaimDecision::Deny,
-                                           dp::String{"conflicts with active request"},
-                                           active_request.id,
-                                           dp::nullopt,
-                                           {}};
+                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with active request"},
+                                           active_request.id, dp::nullopt,
+                                           conflicting_targets(request, active_request)};
                 }
             }
 
@@ -177,11 +191,8 @@ namespace timenav {
                 }
 
                 if (!claims_compatible_for_current_index(request, active_lease)) {
-                    return ClaimEvaluation{ClaimDecision::Deny,
-                                           dp::String{"conflicts with granted lease"},
-                                           dp::nullopt,
-                                           active_lease.id,
-                                           {}};
+                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with granted lease"}, dp::nullopt,
+                                           active_lease.id, conflicting_targets(request, active_lease)};
                 }
             }
 
@@ -193,6 +204,39 @@ namespace timenav {
         }
 
       private:
+        [[nodiscard]] dp::Optional<ClaimTarget> first_invalid_target(const ClaimRequest &request) const noexcept {
+            if (index_ == nullptr) {
+                return dp::nullopt;
+            }
+
+            for (const auto &target : request.targets) {
+                if ((target.kind == ClaimTargetKind::Zone && index_->zone(target.resource_id) == nullptr) ||
+                    (target.kind == ClaimTargetKind::Node && index_->node(target.resource_id) == nullptr) ||
+                    (target.kind == ClaimTargetKind::Edge && index_->edge(target.resource_id) == nullptr)) {
+                    return target;
+                }
+            }
+
+            return dp::nullopt;
+        }
+        [[nodiscard]] static dp::Vector<ClaimTarget> conflicting_targets(const ClaimRequest &lhs,
+                                                                         const ClaimRequest &rhs) {
+            dp::Vector<ClaimTarget> conflicts;
+            for (const auto &lhs_target : lhs.targets) {
+                for (const auto &rhs_target : rhs.targets) {
+                    if (lhs_target.kind == rhs_target.kind && lhs_target.resource_id == rhs_target.resource_id) {
+                        conflicts.push_back(lhs_target);
+                    }
+                }
+            }
+            return conflicts;
+        }
+        [[nodiscard]] static dp::Vector<ClaimTarget> conflicting_targets(const ClaimRequest &request,
+                                                                         const Lease &lease) {
+            ClaimRequest lease_view{};
+            lease_view.targets = lease.targets;
+            return conflicting_targets(request, lease_view);
+        }
         [[nodiscard]] bool claims_compatible_for_current_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
             if (index_ == nullptr) {
                 return claims_compatible(lhs, rhs);
