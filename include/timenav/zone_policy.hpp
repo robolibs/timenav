@@ -57,6 +57,7 @@ namespace timenav {
         dp::Optional<bool> blocked;
         dp::Optional<dp::f64> priority;
         dp::Optional<dp::u64> capacity;
+        bool capacity_is_explicit = false;
         dp::Optional<dp::f64> clearance_width;
         dp::Optional<dp::f64> clearance_height;
         dp::Optional<dp::String> surface_type;

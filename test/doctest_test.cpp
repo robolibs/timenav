@@ -1177,6 +1177,7 @@ TEST_CASE("edge traffic semantics exposes typed defaults") {
     CHECK_FALSE(semantics.passing_allowed.has_value());
     CHECK_FALSE(semantics.priority.has_value());
     CHECK_FALSE(semantics.capacity.has_value());
+    CHECK_FALSE(semantics.capacity_is_explicit);
     CHECK_FALSE(semantics.no_stop.has_value());
     CHECK_FALSE(semantics.preferred_direction.has_value());
     CHECK(semantics.properties.empty());
