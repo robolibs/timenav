@@ -332,6 +332,31 @@ TEST_CASE("claim manager stores granted leases") {
     CHECK(manager.find_lease(timenav::LeaseId{99}) == nullptr);
 }
 
+TEST_CASE("zone claim compatibility distinguishes overlapping exclusive and shared access") {
+    const auto shared_zone = zoneout::UUID("30303030-3030-4030-8030-303030303030");
+    const auto other_zone = zoneout::UUID("40404040-4040-4040-8040-404040404040");
+
+    timenav::ClaimRequest exclusive_request{};
+    exclusive_request.access_mode = timenav::ClaimAccessMode::Exclusive;
+    exclusive_request.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, shared_zone});
+
+    timenav::ClaimRequest shared_request{};
+    shared_request.access_mode = timenav::ClaimAccessMode::Shared;
+    shared_request.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, shared_zone});
+
+    timenav::ClaimRequest disjoint_request{};
+    disjoint_request.access_mode = timenav::ClaimAccessMode::Exclusive;
+    disjoint_request.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, other_zone});
+
+    timenav::ClaimRequest shared_peer{};
+    shared_peer.access_mode = timenav::ClaimAccessMode::Shared;
+    shared_peer.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, shared_zone});
+
+    CHECK_FALSE(timenav::ClaimManager::zone_claims_compatible(exclusive_request, shared_request));
+    CHECK(timenav::ClaimManager::zone_claims_compatible(shared_request, shared_peer));
+    CHECK(timenav::ClaimManager::zone_claims_compatible(exclusive_request, disjoint_request));
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

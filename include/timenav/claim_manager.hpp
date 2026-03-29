@@ -40,6 +40,27 @@ namespace timenav {
             return nullptr;
         }
 
+        [[nodiscard]] static bool zone_claims_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs) noexcept {
+            for (const auto &lhs_target : lhs.targets) {
+                if (lhs_target.kind != ClaimTargetKind::Zone) {
+                    continue;
+                }
+
+                for (const auto &rhs_target : rhs.targets) {
+                    if (rhs_target.kind != ClaimTargetKind::Zone || lhs_target.resource_id != rhs_target.resource_id) {
+                        continue;
+                    }
+
+                    if (lhs.access_mode == ClaimAccessMode::Exclusive ||
+                        rhs.access_mode == ClaimAccessMode::Exclusive) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
       private:
         const WorkspaceIndex *index_ = nullptr;
         dp::Vector<ClaimRequest> active_requests_{};
