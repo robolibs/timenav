@@ -271,3 +271,30 @@ TEST_CASE("workspace index supports basic uuid resolution across zones nodes and
     CHECK(index.parent_zone(grandchild.id())->id() == child_a.id());
     CHECK(index.ancestor_zones(grandchild.id()).back()->id() == root.id());
 }
+
+TEST_CASE("workspace index lists nodes in each zone") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+    const auto &grandchild = child_a.children().at(0);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto root_nodes = index.nodes_in_zone(root.id());
+    REQUIRE(root_nodes.size() == 3);
+    CHECK(root_nodes[0]->id == fixture.node_a_id);
+    CHECK(root_nodes[1]->id == fixture.node_b_id);
+    CHECK(root_nodes[2]->id == fixture.node_c_id);
+
+    const auto child_a_nodes = index.nodes_in_zone(child_a.id());
+    REQUIRE(child_a_nodes.size() == 2);
+    CHECK(child_a_nodes[0]->id == fixture.node_a_id);
+    CHECK(child_a_nodes[1]->id == fixture.node_b_id);
+
+    const auto child_b_nodes = index.nodes_in_zone(child_b.id());
+    REQUIRE(child_b_nodes.size() == 1);
+    CHECK(child_b_nodes[0]->id == fixture.node_c_id);
+
+    CHECK(index.nodes_in_zone(grandchild.id()).empty());
+}

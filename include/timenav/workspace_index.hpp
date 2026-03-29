@@ -65,6 +65,24 @@ namespace timenav {
             collect_descendants(zone_id, descendants);
             return descendants;
         }
+        [[nodiscard]] dp::Vector<const zoneout::NodeData *> nodes_in_zone(const zoneout::UUID &zone_id) const {
+            dp::Vector<const zoneout::NodeData *> zone_nodes;
+
+            if (workspace_ == nullptr) {
+                return zone_nodes;
+            }
+
+            const auto it = nodes_by_zone_.find(zone_id);
+            if (it == nodes_by_zone_.end()) {
+                return zone_nodes;
+            }
+
+            for (const auto vertex_id : it->second) {
+                zone_nodes.push_back(&workspace_->graph()[vertex_id]);
+            }
+
+            return zone_nodes;
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();
@@ -100,6 +118,7 @@ namespace timenav {
             edges_.clear();
             parents_.clear();
             children_.clear();
+            nodes_by_zone_.clear();
 
             if (workspace_ == nullptr) {
                 return;
@@ -108,6 +127,9 @@ namespace timenav {
             index_zone_tree(workspace_->root_zone(), nullptr);
             for (const auto vertex_id : workspace_->graph().vertices()) {
                 nodes_[workspace_->graph()[vertex_id].id] = vertex_id;
+                for (const auto &zone_id : workspace_->graph()[vertex_id].zone_ids) {
+                    nodes_by_zone_[zone_id].push_back(vertex_id);
+                }
             }
             for (const auto &edge : workspace_->graph().edges()) {
                 edges_[workspace_->graph().edge_property(edge.id).id] = edge.id;
@@ -121,6 +143,7 @@ namespace timenav {
         std::unordered_map<zoneout::UUID, graphix::vertex::EdgeId, zoneout::UUIDHash> edges_{};
         std::unordered_map<zoneout::UUID, const zoneout::Zone *, zoneout::UUIDHash> parents_{};
         std::unordered_map<zoneout::UUID, dp::Vector<const zoneout::Zone *>, zoneout::UUIDHash> children_{};
+        std::unordered_map<zoneout::UUID, dp::Vector<zoneout::Graph::VertexId>, zoneout::UUIDHash> nodes_by_zone_{};
     };
 
 } // namespace timenav

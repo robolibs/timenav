@@ -1208,7 +1208,7 @@ Target:
 
 ### Milestone 2: Membership And Spatial Semantics
 
-- [ ] Slice 2.1: add `nodes_in_zone(zone_id)` query
+- [x] Slice 2.1: add `nodes_in_zone(zone_id)` query
 - [ ] Slice 2.2: add `zones_of_node(node_id)` query
 - [ ] Slice 2.3: add `zones_of_edge(edge_id)` query
 - [ ] Slice 2.4: add `edge_between(node_a, node_b)` query
