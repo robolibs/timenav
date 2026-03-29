@@ -1368,7 +1368,7 @@ Still missing / still weak:
 - [x] Slice 6.7: add release-behind behavior after progress updates
 - [x] Slice 6.8: add basic schedule-window checks from zone properties
 - [x] Slice 6.9: add simple priority/right-of-way arbitration hooks
-- [ ] Slice 6.10: add tests for multi-robot progress, release, and scheduling conflicts
+- [x] Slice 6.10: add tests for multi-robot progress, release, and scheduling conflicts
 
 ### Milestone 7: VDA5050 3.0.0 Compatibility Layer
 

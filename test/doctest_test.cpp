@@ -874,6 +874,52 @@ TEST_CASE("coordinator regression covers multi-robot progress release and schedu
     CHECK(coordinator.robot_count() == 2);
 }
 
+TEST_CASE("coordinator regression covers rolling claims archived releases and parsed schedule windows") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.root_zone().children()[0].set_property("traffic.schedule_window", "day, night");
+    fixture.workspace.root_zone().children()[1].set_property("traffic.schedule_window", "night");
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState robot{};
+    robot.robot_id = timenav::RobotId{171};
+    robot.route_plan = route_plan.value();
+    robot.horizon = 1;
+    robot.current_node_id = fixture.node_b_id;
+    robot.progress_state = timenav::RobotProgressState::FollowingRoute;
+    robot.updated_at_tick = 9;
+    robot.active_lease_ids.push_back(timenav::LeaseId{401});
+    robot.active_lease_ids.push_back(timenav::LeaseId{402});
+    coordinator.register_robot(robot);
+
+    timenav::Lease old_lease{};
+    old_lease.id = timenav::LeaseId{401};
+    old_lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, fixture.node_a_id});
+    coordinator.claim_manager().add_lease(old_lease);
+
+    timenav::Lease remaining_lease{};
+    remaining_lease.id = timenav::LeaseId{402};
+    remaining_lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_bc_id});
+    coordinator.claim_manager().add_lease(remaining_lease);
+
+    const auto rolling_request = coordinator.claim_request_for_robot(timenav::RobotId{171}, timenav::ClaimId{501});
+    REQUIRE(rolling_request.requested_at_tick.has_value());
+    CHECK(rolling_request.requested_at_tick.value() == 9);
+    CHECK(coordinator.release_behind_progress(timenav::RobotId{171}) == 1);
+    CHECK(coordinator.claim_manager().find_released_lease(timenav::LeaseId{401}) != nullptr);
+    CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "day"));
+    CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{
+              2.0, 2.0, false, false, timenav::RobotProgressState::FollowingRoute, timenav::RobotProgressState::Waiting}) ==
+          timenav::ArbitrationDecision::Proceed);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
