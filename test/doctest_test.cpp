@@ -95,3 +95,22 @@ TEST_CASE("workspace index can borrow or own a workspace and expose the root zon
     CHECK(owned_index.root_zone()->id() == owned_root_id);
     CHECK(owned_index.root_zone_id().value() == owned_root_id);
 }
+
+TEST_CASE("workspace index resolves zones by uuid") {
+    const auto workspace = make_test_workspace();
+    const auto &root = workspace.root_zone();
+    REQUIRE(root.child_count() == 2);
+
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+
+    const timenav::WorkspaceIndex index{workspace};
+
+    REQUIRE(index.zone(root.id()) != nullptr);
+    CHECK(index.zone(root.id())->name() == "root");
+    REQUIRE(index.zone(child_a.id()) != nullptr);
+    CHECK(index.zone(child_a.id())->name() == "child-a");
+    REQUIRE(index.zone(child_b.id()) != nullptr);
+    CHECK(index.zone(child_b.id())->name() == "child-b");
+    CHECK(index.zone(zoneout::UUID{}) == nullptr);
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
 
 #include <zoneout/zoneout.hpp>
 
@@ -9,9 +10,11 @@ namespace timenav {
     class WorkspaceIndex {
       public:
         WorkspaceIndex() = default;
-        explicit WorkspaceIndex(const zoneout::Workspace &workspace) : workspace_(&workspace) {}
+        explicit WorkspaceIndex(const zoneout::Workspace &workspace) : workspace_(&workspace) { rebuild(); }
         explicit WorkspaceIndex(std::shared_ptr<const zoneout::Workspace> workspace)
-            : owned_workspace_(std::move(workspace)), workspace_(owned_workspace_.get()) {}
+            : owned_workspace_(std::move(workspace)), workspace_(owned_workspace_.get()) {
+            rebuild();
+        }
 
         [[nodiscard]] bool empty() const noexcept { return workspace_ == nullptr; }
         [[nodiscard]] bool has_workspace() const noexcept { return workspace_ != nullptr; }
@@ -19,6 +22,10 @@ namespace timenav {
         [[nodiscard]] const zoneout::Workspace *workspace() const noexcept { return workspace_; }
         [[nodiscard]] const zoneout::Zone *root_zone() const noexcept {
             return workspace_ == nullptr ? nullptr : &workspace_->root_zone();
+        }
+        [[nodiscard]] const zoneout::Zone *zone(const zoneout::UUID &zone_id) const noexcept {
+            const auto it = zones_.find(zone_id);
+            return it == zones_.end() ? nullptr : it->second;
         }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
@@ -29,8 +36,20 @@ namespace timenav {
         }
 
       private:
+        void rebuild() {
+            zones_.clear();
+
+            if (workspace_ == nullptr) {
+                return;
+            }
+
+            workspace_->root_zone().visit(
+                [this](const zoneout::Zone &zone, std::size_t) { zones_[zone.id()] = &zone; });
+        }
+
         std::shared_ptr<const zoneout::Workspace> owned_workspace_{};
         const zoneout::Workspace *workspace_ = nullptr;
+        std::unordered_map<zoneout::UUID, const zoneout::Zone *, zoneout::UUIDHash> zones_{};
     };
 
 } // namespace timenav
