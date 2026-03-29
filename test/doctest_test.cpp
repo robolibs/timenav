@@ -405,8 +405,10 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
 
     const timenav::vda::Adapter adapter{};
     const auto order = adapter.order_from_route(route_plan.value());
+    const auto direct_order = timenav::vda::map_route_plan(route_plan.value());
 
     CHECK(order.order_id == fixture.node_c_id.toString());
+    CHECK(direct_order.order_id == order.order_id);
     REQUIRE(order.nodes.size() == 3);
     REQUIRE(order.edges.size() == 2);
     CHECK(order.nodes[0].node_id == fixture.node_a_id.toString());

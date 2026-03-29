@@ -11,15 +11,7 @@ namespace timenav::vda {
 
     inline dp::String uuid_string(const zoneout::UUID &id) { return dp::String{id.toString()}; }
 
-    class Adapter {
-      public:
-        Adapter() = default;
-
-        [[nodiscard]] Order order_from_route(const RoutePlan &route_plan) const;
-        [[nodiscard]] State state_from_robot(const RobotState &robot_state) const;
-    };
-
-    inline Order Adapter::order_from_route(const RoutePlan &route_plan) const {
+    inline Order map_route_plan(const RoutePlan &route_plan) {
         Order order{};
         order.order_id = uuid_string(route_plan.goal_node_id);
 
@@ -38,5 +30,15 @@ namespace timenav::vda {
 
         return order;
     }
+
+    class Adapter {
+      public:
+        Adapter() = default;
+
+        [[nodiscard]] Order order_from_route(const RoutePlan &route_plan) const;
+        [[nodiscard]] State state_from_robot(const RobotState &robot_state) const;
+    };
+
+    inline Order Adapter::order_from_route(const RoutePlan &route_plan) const { return map_route_plan(route_plan); }
 
 } // namespace timenav::vda
