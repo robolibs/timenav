@@ -1554,7 +1554,7 @@ This section summarizes the major unfinished work that must still happen before 
 - [ ] deepen `state` compatibility with real `3.0.0` expectations
 - [ ] incorporate zone/edge request concepts more faithfully
 - [ ] make compatibility mapping broader without letting it become the core model
-- [ ] validate malformed public `RoutePlan` input before mapping to VDA types
+- [x] validate malformed public `RoutePlan` input before mapping to VDA types
 - [ ] narrow or restate compatibility claims unless protocol coverage is materially deeper
 
 ### Testing

@@ -16,7 +16,12 @@ namespace timenav::vda {
 
     inline dp::String uuid_string(const zoneout::UUID &id) { return dp::String{id.toString()}; }
 
-    inline Order map_route_plan(const RoutePlan &route_plan) {
+    inline dp::Result<Order> try_map_route_plan(const RoutePlan &route_plan) {
+        const auto route_shape = validate_route_plan_shape(route_plan);
+        if (route_shape.is_err()) {
+            return dp::Result<Order>::err(route_shape.error());
+        }
+
         Order order{};
         order.order_id = uuid_string(route_plan.goal_node_id);
 
@@ -40,10 +45,19 @@ namespace timenav::vda {
             order.edges.push_back(edge);
         }
 
-        return order;
+        return dp::Result<Order>::ok(order);
     }
-    inline Order map_route_plan(const WorkspaceIndex &index, const RoutePlan &route_plan) {
-        Order order = map_route_plan(route_plan);
+    inline Order map_route_plan(const RoutePlan &route_plan) {
+        const auto order = try_map_route_plan(route_plan);
+        return order.is_ok() ? order.value() : Order{};
+    }
+    inline dp::Result<Order> try_map_route_plan(const WorkspaceIndex &index, const RoutePlan &route_plan) {
+        const auto base_order = try_map_route_plan(route_plan);
+        if (base_order.is_err()) {
+            return dp::Result<Order>::err(base_order.error());
+        }
+
+        Order order = base_order.value();
 
         for (dp::u64 i = 0; i < route_plan.traversed_node_ids.size() && i < order.nodes.size(); ++i) {
             const auto node_zones = index.zones_of_node(route_plan.traversed_node_ids[i]);
@@ -65,7 +79,11 @@ namespace timenav::vda {
             }
         }
 
-        return order;
+        return dp::Result<Order>::ok(order);
+    }
+    inline Order map_route_plan(const WorkspaceIndex &index, const RoutePlan &route_plan) {
+        const auto order = try_map_route_plan(index, route_plan);
+        return order.is_ok() ? order.value() : Order{};
     }
 
     class Adapter {
