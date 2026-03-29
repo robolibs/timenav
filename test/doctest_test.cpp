@@ -106,6 +106,69 @@ namespace {
         return std::move(fixture.workspace);
     }
 
+    struct RouteChoiceWorkspace {
+        zoneout::Workspace workspace;
+        zoneout::UUID node_a_id;
+        zoneout::UUID node_b_id;
+        zoneout::UUID node_c_id;
+        zoneout::UUID node_d_id;
+        zoneout::UUID edge_ab_id;
+        zoneout::UUID edge_bd_id;
+        zoneout::UUID edge_ac_id;
+        zoneout::UUID edge_cd_id;
+        zoneout::UUID blocked_zone_id;
+
+        explicit RouteChoiceWorkspace(zoneout::Workspace workspace_value) : workspace(std::move(workspace_value)) {}
+    };
+
+    RouteChoiceWorkspace make_route_choice_workspace() {
+        auto root = zoneout::ZoneBuilder()
+                        .with_name("root")
+                        .with_type("workspace")
+                        .with_boundary(rectangle(0.0, 0.0, 100.0, 100.0))
+                        .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                        .build();
+
+        auto blocked_lane = zoneout::ZoneBuilder()
+                                .with_name("blocked-lane")
+                                .with_type("lane")
+                                .with_boundary(rectangle(40.0, 45.0, 60.0, 55.0))
+                                .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                                .with_property("traffic.blocked", "true")
+                                .build();
+        const auto blocked_zone_id = blocked_lane.id();
+        root.add_child(std::move(blocked_lane));
+
+        RouteChoiceWorkspace fixture{zoneout::Workspace(std::move(root))};
+        fixture.blocked_zone_id = blocked_zone_id;
+        fixture.node_a_id = zoneout::UUID("66666666-6666-4666-8666-666666666666");
+        fixture.node_b_id = zoneout::UUID("77777777-7777-4777-8777-777777777777");
+        fixture.node_c_id = zoneout::UUID("88888888-8888-4888-8888-888888888888");
+        fixture.node_d_id = zoneout::UUID("99999999-9999-4999-8999-999999999999");
+        fixture.edge_ab_id = zoneout::UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        fixture.edge_bd_id = zoneout::UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        fixture.edge_ac_id = zoneout::UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+        fixture.edge_cd_id = zoneout::UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+
+        const auto node_a = fixture.workspace.add_node(zoneout::NodeData{fixture.node_a_id, dp::Point{10.0, 50.0, 0.0}});
+        const auto node_b = fixture.workspace.add_node(zoneout::NodeData{fixture.node_b_id, dp::Point{40.0, 50.0, 0.0}});
+        const auto node_c = fixture.workspace.add_node(zoneout::NodeData{fixture.node_c_id, dp::Point{10.0, 20.0, 0.0}});
+        const auto node_d = fixture.workspace.add_node(zoneout::NodeData{fixture.node_d_id, dp::Point{70.0, 50.0, 0.0}});
+
+        fixture.workspace.add_edge(node_a, node_b, zoneout::EdgeData{fixture.edge_ab_id, {}});
+        fixture.workspace.add_edge(node_b, node_d, zoneout::EdgeData{fixture.edge_bd_id, {}});
+        fixture.workspace.add_edge(node_a, node_c, zoneout::EdgeData{fixture.edge_ac_id, {}});
+        fixture.workspace.add_edge(node_c, node_d, zoneout::EdgeData{fixture.edge_cd_id, {}});
+
+        const auto blocked_edge = fixture.workspace.find_edge(fixture.edge_bd_id);
+        if (!blocked_edge.has_value()) {
+            throw std::runtime_error("expected blocked route edge to exist");
+        }
+        fixture.workspace.graph().edge_property(*blocked_edge).zone_ids.push_back(fixture.blocked_zone_id);
+
+        return fixture;
+    }
+
 } // namespace
 
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
@@ -193,6 +256,38 @@ TEST_CASE("route cost accumulation sums traversed edge weights") {
 
     REQUIRE(route_cost.is_ok());
     CHECK(route_cost.value() == doctest::Approx(4.0));
+}
+
+TEST_CASE("edge blocking excludes routes through blocked zone or edge policy") {
+    auto fixture = make_route_choice_workspace();
+    const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+    const auto edge_bd = fixture.workspace.find_edge(fixture.edge_bd_id);
+    const auto edge_ac = fixture.workspace.find_edge(fixture.edge_ac_id);
+    const auto edge_cd = fixture.workspace.find_edge(fixture.edge_cd_id);
+    REQUIRE(edge_ab.has_value());
+    REQUIRE(edge_bd.has_value());
+    REQUIRE(edge_ac.has_value());
+    REQUIRE(edge_cd.has_value());
+
+    fixture.workspace.graph().set_weight(*edge_ab, 1.0);
+    fixture.workspace.graph().set_weight(*edge_bd, 1.0);
+    fixture.workspace.graph().set_weight(*edge_ac, 2.0);
+    fixture.workspace.graph().set_weight(*edge_cd, 2.0);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    CHECK(timenav::is_edge_hard_blocked(index, fixture.edge_bd_id));
+    CHECK_FALSE(timenav::is_edge_hard_blocked(index, fixture.edge_cd_id));
+
+    const auto search = timenav::shortest_path_search_with_blocking(index, fixture.node_a_id, fixture.node_d_id);
+    const auto route_nodes = timenav::reconstruct_route_nodes(search, fixture.node_a_id, fixture.node_d_id);
+
+    CHECK(search.found);
+    CHECK(search.distance == doctest::Approx(4.0));
+    REQUIRE(route_nodes.size() == 3);
+    CHECK(route_nodes[0] == fixture.node_a_id);
+    CHECK(route_nodes[1] == fixture.node_c_id);
+    CHECK(route_nodes[2] == fixture.node_d_id);
 }
 
 TEST_CASE("zone policy exposes typed defaults") {

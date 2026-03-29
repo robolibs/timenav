@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include "timenav/workspace_index.hpp"
+#include "timenav/zone_policy.hpp"
 #include <datapod/datapod.hpp>
 #include <zoneout/zoneout.hpp>
 
@@ -39,6 +40,31 @@ namespace timenav {
         zoneout::UUID edge_id;
         dp::f64 weight = 0.0;
     };
+
+    inline bool is_edge_hard_blocked(const WorkspaceIndex &index, const zoneout::UUID &edge_id) {
+        const auto *edge_data = index.edge(edge_id);
+        if (edge_data == nullptr) {
+            return true;
+        }
+
+        const auto edge_semantics = parse_edge_traffic_semantics(edge_data->properties);
+        if (edge_semantics.blocked.value_or(false)) {
+            return true;
+        }
+
+        for (const auto *zone : index.zones_of_edge(edge_id)) {
+            if (zone == nullptr) {
+                continue;
+            }
+
+            const auto zone_policy = parse_zone_policy(zone->properties());
+            if (zone_policy.blocked.value_or(false) || zone_policy.kind == ZonePolicyKind::Restricted) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     class GraphTraversalAdapter {
       public:
@@ -110,6 +136,60 @@ namespace timenav {
 
             for (const auto &neighbor : adapter.neighbors(current.node_id)) {
                 if (visited.count(neighbor.node_id) > 0) {
+                    continue;
+                }
+
+                const auto new_distance = current.distance + neighbor.weight;
+                const auto best_it = state.distances.find(neighbor.node_id);
+                if (best_it == state.distances.end() || new_distance < best_it->second) {
+                    state.distances[neighbor.node_id] = new_distance;
+                    state.predecessors[neighbor.node_id] = current.node_id;
+                    frontier.push(QueueEntry{neighbor.node_id, new_distance});
+                }
+            }
+        }
+
+        return state;
+    }
+
+    inline RouteSearchState shortest_path_search_with_blocking(const WorkspaceIndex &index,
+                                                               const zoneout::UUID &start_node_id,
+                                                               const zoneout::UUID &goal_node_id) {
+        struct QueueEntry {
+            zoneout::UUID node_id;
+            dp::f64 distance;
+
+            bool operator>(const QueueEntry &other) const { return distance > other.distance; }
+        };
+
+        RouteSearchState state{};
+        if (index.node(start_node_id) == nullptr || index.node(goal_node_id) == nullptr) {
+            return state;
+        }
+
+        GraphTraversalAdapter adapter{index};
+        std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<QueueEntry>> frontier;
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> visited;
+
+        state.distances[start_node_id] = 0.0;
+        frontier.push(QueueEntry{start_node_id, 0.0});
+
+        while (!frontier.empty()) {
+            const auto current = frontier.top();
+            frontier.pop();
+
+            if (!visited.insert(current.node_id).second) {
+                continue;
+            }
+
+            if (current.node_id == goal_node_id) {
+                state.found = true;
+                state.distance = current.distance;
+                return state;
+            }
+
+            for (const auto &neighbor : adapter.neighbors(current.node_id)) {
+                if (visited.count(neighbor.node_id) > 0 || is_edge_hard_blocked(index, neighbor.edge_id)) {
                     continue;
                 }
 

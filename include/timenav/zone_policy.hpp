@@ -53,6 +53,7 @@ namespace timenav {
         dp::Optional<dp::String> lane_type;
         dp::Optional<bool> reversible;
         dp::Optional<bool> passing_allowed;
+        dp::Optional<bool> blocked;
         dp::Optional<dp::f64> priority;
         dp::Optional<dp::u64> capacity;
         dp::Optional<dp::f64> clearance_width;
@@ -267,6 +268,7 @@ namespace timenav {
      * - `traffic.lane_type`
      * - `traffic.reversible`
      * - `traffic.passing_allowed`
+     * - `traffic.blocked`
      * - `traffic.priority`
      * - `traffic.capacity`
      * - `traffic.clearance_width`
@@ -305,6 +307,11 @@ namespace timenav {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.passing_allowed = parsed.value();
+                }
+            } else if (key == "traffic.blocked") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.blocked = parsed.value();
                 }
             } else if (key == "traffic.priority") {
                 const auto parsed = parse_traffic_f64(value);
@@ -412,7 +419,8 @@ namespace timenav {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic positive numeric key must be > 0"}});
                 }
-            } else if (key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.no_stop") {
+            } else if (key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.no_stop" ||
+                       key == "traffic.blocked") {
                 if (parse_traffic_bool(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic boolean key must parse as true/false"}});
