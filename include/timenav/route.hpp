@@ -150,4 +150,39 @@ namespace timenav {
         return nodes;
     }
 
+    inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
+                                                     const dp::Vector<zoneout::UUID> &route_nodes) {
+        if (route_nodes.empty()) {
+            return dp::Result<dp::f64>::ok(0.0);
+        }
+
+        const auto *workspace = index.workspace();
+        if (workspace == nullptr) {
+            return dp::Result<dp::f64>::err(dp::Error::invalid_argument("route cost accumulation requires workspace"));
+        }
+
+        dp::f64 total_cost = 0.0;
+        for (dp::u64 i = 1; i < route_nodes.size(); ++i) {
+            const auto from_vertex = workspace->find_node(route_nodes[i - 1]);
+            const auto to_vertex = workspace->find_node(route_nodes[i]);
+            if (!from_vertex.has_value() || !to_vertex.has_value()) {
+                return dp::Result<dp::f64>::err(
+                    dp::Error::not_found("route references node that is not present in the workspace"));
+            }
+
+            auto edge_id = workspace->graph().get_edge(*from_vertex, *to_vertex);
+            if (!edge_id.has_value()) {
+                edge_id = workspace->graph().get_edge(*to_vertex, *from_vertex);
+            }
+            if (!edge_id.has_value()) {
+                return dp::Result<dp::f64>::err(
+                    dp::Error::not_found("route references adjacent nodes without a graph edge"));
+            }
+
+            total_cost += workspace->graph().get_weight(*edge_id);
+        }
+
+        return dp::Result<dp::f64>::ok(total_cost);
+    }
+
 } // namespace timenav

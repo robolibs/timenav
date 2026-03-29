@@ -174,6 +174,27 @@ TEST_CASE("route reconstruction builds an ordered node sequence from predecessor
     CHECK(route_nodes[2] == fixture.node_c_id);
 }
 
+TEST_CASE("route cost accumulation sums traversed edge weights") {
+    auto fixture = make_test_workspace();
+    const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+    const auto edge_bc = fixture.workspace.find_edge(fixture.edge_bc_id);
+    REQUIRE(edge_ab.has_value());
+    REQUIRE(edge_bc.has_value());
+    fixture.workspace.graph().set_weight(*edge_ab, 1.25);
+    fixture.workspace.graph().set_weight(*edge_bc, 2.75);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+
+    const auto route_cost = timenav::accumulate_route_cost(index, route_nodes);
+
+    REQUIRE(route_cost.is_ok());
+    CHECK(route_cost.value() == doctest::Approx(4.0));
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 
