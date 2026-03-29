@@ -175,4 +175,47 @@ namespace timenav {
         return policy;
     }
 
+    inline EdgeTrafficSemantics
+    parse_edge_traffic_semantics(const std::unordered_map<std::string, std::string> &properties,
+                                 bool directed = false) {
+        EdgeTrafficSemantics semantics{};
+        semantics.directed = directed;
+
+        for (const auto &[key, value] : properties) {
+            semantics.properties[dp::String{key}] = dp::String{value};
+
+            if (key == "traffic.speed_limit") {
+                semantics.speed_limit = detail::parse_f64_relaxed(value);
+            } else if (key == "traffic.lane_type") {
+                semantics.lane_type = dp::String{value};
+            } else if (key == "traffic.reversible") {
+                semantics.reversible = detail::parse_bool_relaxed(value);
+            } else if (key == "traffic.passing_allowed") {
+                semantics.passing_allowed = detail::parse_bool_relaxed(value);
+            } else if (key == "traffic.priority") {
+                semantics.priority = detail::parse_f64_relaxed(value);
+            } else if (key == "traffic.capacity") {
+                semantics.capacity = detail::parse_u64_relaxed(value);
+            } else if (key == "traffic.clearance_width") {
+                semantics.clearance_width = detail::parse_f64_relaxed(value);
+            } else if (key == "traffic.clearance_height") {
+                semantics.clearance_height = detail::parse_f64_relaxed(value);
+            } else if (key == "traffic.surface_type") {
+                semantics.surface_type = dp::String{value};
+            } else if (key == "traffic.robot_class") {
+                semantics.robot_class = dp::String{value};
+            } else if (key == "traffic.allowed_payload") {
+                semantics.allowed_payload = dp::String{value};
+            } else if (key == "traffic.cost_bias") {
+                semantics.cost_bias = detail::parse_f64_relaxed(value);
+            } else if (key == "traffic.no_stop") {
+                semantics.no_stop = detail::parse_bool_relaxed(value);
+            } else if (key == "traffic.preferred_direction") {
+                semantics.preferred_direction = dp::String{value};
+            }
+        }
+
+        return semantics;
+    }
+
 } // namespace timenav

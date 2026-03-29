@@ -179,6 +179,58 @@ TEST_CASE("zone policy parser reads known zone traffic keys") {
     CHECK(policy.properties.size() == properties.size());
 }
 
+TEST_CASE("edge traffic semantics parser reads known edge traffic keys") {
+    const std::unordered_map<std::string, std::string> properties = {
+        {"traffic.speed_limit", "2.5"},
+        {"traffic.lane_type", "corridor"},
+        {"traffic.reversible", "true"},
+        {"traffic.passing_allowed", "false"},
+        {"traffic.priority", "4.0"},
+        {"traffic.capacity", "2"},
+        {"traffic.clearance_width", "1.4"},
+        {"traffic.clearance_height", "2.1"},
+        {"traffic.surface_type", "concrete"},
+        {"traffic.robot_class", "tow"},
+        {"traffic.allowed_payload", "light"},
+        {"traffic.cost_bias", "0.8"},
+        {"traffic.no_stop", "true"},
+        {"traffic.preferred_direction", "eastbound"},
+    };
+
+    const auto semantics = timenav::parse_edge_traffic_semantics(properties, true);
+
+    CHECK(semantics.directed);
+    REQUIRE(semantics.speed_limit.has_value());
+    CHECK(semantics.speed_limit.value() == doctest::Approx(2.5));
+    REQUIRE(semantics.lane_type.has_value());
+    CHECK(semantics.lane_type.value() == "corridor");
+    REQUIRE(semantics.reversible.has_value());
+    CHECK(semantics.reversible.value());
+    REQUIRE(semantics.passing_allowed.has_value());
+    CHECK_FALSE(semantics.passing_allowed.value());
+    REQUIRE(semantics.priority.has_value());
+    CHECK(semantics.priority.value() == doctest::Approx(4.0));
+    REQUIRE(semantics.capacity.has_value());
+    CHECK(semantics.capacity.value() == 2);
+    REQUIRE(semantics.clearance_width.has_value());
+    CHECK(semantics.clearance_width.value() == doctest::Approx(1.4));
+    REQUIRE(semantics.clearance_height.has_value());
+    CHECK(semantics.clearance_height.value() == doctest::Approx(2.1));
+    REQUIRE(semantics.surface_type.has_value());
+    CHECK(semantics.surface_type.value() == "concrete");
+    REQUIRE(semantics.robot_class.has_value());
+    CHECK(semantics.robot_class.value() == "tow");
+    REQUIRE(semantics.allowed_payload.has_value());
+    CHECK(semantics.allowed_payload.value() == "light");
+    REQUIRE(semantics.cost_bias.has_value());
+    CHECK(semantics.cost_bias.value() == doctest::Approx(0.8));
+    REQUIRE(semantics.no_stop.has_value());
+    CHECK(semantics.no_stop.value());
+    REQUIRE(semantics.preferred_direction.has_value());
+    CHECK(semantics.preferred_direction.value() == "eastbound");
+    CHECK(semantics.properties.size() == properties.size());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};
