@@ -366,6 +366,63 @@ TEST_CASE("effective edge semantics combine structural and zone-derived rules") 
     CHECK(semantics.no_stop.value());
 }
 
+TEST_CASE("policy layer regression covers parsing validation inheritance and derivation") {
+    const std::unordered_map<std::string, std::string> parent_zone_properties = {
+        {"traffic.policy", "exclusive"},
+        {"traffic.capacity", "4"},
+        {"traffic.speed_limit", "1.5"},
+        {"traffic.claim_required", "true"},
+    };
+    const std::unordered_map<std::string, std::string> child_zone_properties = {
+        {"traffic.policy", "shared"},
+        {"traffic.capacity", "2"},
+        {"traffic.waiting_allowed", "false"},
+        {"traffic.entry_rule", "child_gate"},
+    };
+    const std::unordered_map<std::string, std::string> edge_properties = {
+        {"traffic.speed_limit", "2.5"},
+        {"traffic.capacity", "3"},
+        {"traffic.no_stop", "false"},
+    };
+    const std::unordered_map<std::string, std::string> bad_zone_properties = {
+        {"traffic.policy", "unknown"},
+        {"traffic.capacity", "invalid"},
+        {"traffic.stop_allowed", "later"},
+    };
+
+    const auto parent_policy = timenav::parse_zone_policy(parent_zone_properties);
+    const auto child_policy = timenav::parse_zone_policy(child_zone_properties);
+    const auto merged_policy = timenav::merge_zone_policy(parent_policy, child_policy);
+    const auto bad_zone_issues = timenav::validate_zone_traffic_properties(bad_zone_properties);
+
+    dp::Vector<timenav::ZonePolicy> containing_policies;
+    containing_policies.push_back(parent_policy);
+    containing_policies.push_back(merged_policy);
+    const auto effective_edge = timenav::derive_effective_edge_semantics(edge_properties, false, containing_policies);
+
+    CHECK(parent_policy.kind == timenav::ZonePolicyKind::ExclusiveAccess);
+    CHECK(child_policy.kind == timenav::ZonePolicyKind::SharedAccess);
+    CHECK(merged_policy.kind == timenav::ZonePolicyKind::ExclusiveAccess);
+    CHECK(merged_policy.capacity == 2);
+    REQUIRE(merged_policy.waiting_allowed.has_value());
+    CHECK_FALSE(merged_policy.waiting_allowed.value());
+    REQUIRE(merged_policy.entry_rule.has_value());
+    CHECK(merged_policy.entry_rule.value() == "child_gate");
+
+    REQUIRE(bad_zone_issues.size() == 3);
+    const bool first_issue_is_supported = bad_zone_issues[0].severity == timenav::TrafficIssueSeverity::Error ||
+                                          bad_zone_issues[0].severity == timenav::TrafficIssueSeverity::Warning;
+    CHECK(first_issue_is_supported);
+
+    CHECK_FALSE(effective_edge.directed);
+    REQUIRE(effective_edge.speed_limit.has_value());
+    CHECK(effective_edge.speed_limit.value() == doctest::Approx(1.5));
+    REQUIRE(effective_edge.capacity.has_value());
+    CHECK(effective_edge.capacity.value() == 2);
+    REQUIRE(effective_edge.no_stop.has_value());
+    CHECK_FALSE(effective_edge.no_stop.value());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};
