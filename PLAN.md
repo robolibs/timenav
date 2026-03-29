@@ -1235,7 +1235,7 @@ Target:
 ### Milestone 4: Routing And Planning
 
 - [x] Slice 4.1: add `route.hpp` with route step and route plan types
-- [ ] Slice 4.2: add graph traversal adapter over the `zoneout` graph
+- [x] Slice 4.2: add graph traversal adapter over the `zoneout` graph
 - [ ] Slice 4.3: add basic shortest-path search without traffic constraints
 - [ ] Slice 4.4: add route reconstruction from predecessor state
 - [ ] Slice 4.5: add route cost accumulation from edge weight
