@@ -1039,6 +1039,22 @@ TEST_CASE("route reconstruction builds an ordered node sequence from predecessor
     CHECK(route_nodes[2] == fixture.node_c_id);
 }
 
+TEST_CASE("route reconstruction can rebuild structured route steps") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const auto search = timenav::shortest_path_search(index, fixture.node_a_id, fixture.node_c_id);
+
+    const auto steps = timenav::reconstruct_route_steps(index, search, fixture.node_a_id, fixture.node_c_id);
+
+    REQUIRE(steps.is_ok());
+    REQUIRE(steps.value().size() == 3);
+    CHECK_FALSE(steps.value()[0].incoming_edge_id.has_value());
+    REQUIRE(steps.value()[1].incoming_edge_id.has_value());
+    CHECK(steps.value()[1].incoming_edge_id.value() == fixture.edge_ab_id);
+    CHECK(steps.value()[1].step_cost == doctest::Approx(1.0));
+    CHECK(steps.value()[2].cumulative_cost == doctest::Approx(2.0));
+}
+
 TEST_CASE("route cost accumulation sums traversed edge weights") {
     auto fixture = make_test_workspace();
     const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);

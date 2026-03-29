@@ -57,6 +57,9 @@ namespace timenav {
         dp::f64 weight = 0.0;
     };
 
+    inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
+                                                     const dp::Vector<zoneout::UUID> &route_nodes);
+
     inline bool allows_traversal_from_node(const zoneout::EdgeData &edge_data, bool from_source) {
         const auto semantics = parse_edge_traffic_semantics(edge_data.properties);
         if (!semantics.preferred_direction.has_value()) {
@@ -380,6 +383,43 @@ namespace timenav {
 
         std::reverse(nodes.begin(), nodes.end());
         return nodes;
+    }
+
+    inline dp::Result<dp::Vector<RouteStep>> reconstruct_route_steps(const WorkspaceIndex &index,
+                                                                     const RouteSearchState &search,
+                                                                     const zoneout::UUID &start_node_id,
+                                                                     const zoneout::UUID &goal_node_id) {
+        const auto route_nodes = reconstruct_route_nodes(search, start_node_id, goal_node_id);
+        dp::Vector<RouteStep> steps;
+        if (route_nodes.empty() && !(search.found && start_node_id == goal_node_id)) {
+            return dp::Result<dp::Vector<RouteStep>>::ok(steps);
+        }
+
+        dp::f64 cumulative_cost = 0.0;
+        for (dp::u64 i = 0; i < route_nodes.size(); ++i) {
+            RouteStep step{};
+            step.node_id = route_nodes[i];
+            if (i > 0) {
+                const auto *edge_data = index.edge_between(route_nodes[i - 1], route_nodes[i]);
+                if (edge_data == nullptr) {
+                    return dp::Result<dp::Vector<RouteStep>>::err(
+                        dp::Error::not_found("route reconstruction references adjacent nodes without a graph edge"));
+                }
+                step.incoming_edge_id = edge_data->id;
+                const auto partial_route = dp::Vector<zoneout::UUID>(route_nodes.begin() + static_cast<dp::i64>(i - 1),
+                                                                     route_nodes.begin() + static_cast<dp::i64>(i + 1));
+                const auto step_cost = accumulate_route_cost(index, partial_route);
+                if (step_cost.is_err()) {
+                    return dp::Result<dp::Vector<RouteStep>>::err(step_cost.error());
+                }
+                step.step_cost = step_cost.value();
+                cumulative_cost += step.step_cost;
+                step.cumulative_cost = cumulative_cost;
+            }
+            steps.push_back(step);
+        }
+
+        return dp::Result<dp::Vector<RouteStep>>::ok(steps);
     }
 
     inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
