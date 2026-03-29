@@ -83,6 +83,29 @@ namespace {
         return fixture;
     }
 
+    zoneout::Workspace make_invalid_workspace() {
+        auto fixture = make_test_workspace();
+        fixture.workspace.clear_ref();
+        fixture.workspace.set_coord_mode(zoneout::CoordMode::Local);
+
+        const auto node_vertex = fixture.workspace.find_node(fixture.node_a_id);
+        if (!node_vertex.has_value()) {
+            throw std::runtime_error("expected node_a to exist in invalid workspace fixture");
+        }
+        fixture.workspace.graph()[*node_vertex].id = zoneout::UUID::null();
+        fixture.workspace.graph()[*node_vertex].zone_ids.push_back(zoneout::UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"));
+
+        const auto edge_id = fixture.workspace.find_edge(fixture.edge_ab_id);
+        if (!edge_id.has_value()) {
+            throw std::runtime_error("expected edge_ab to exist in invalid workspace fixture");
+        }
+        fixture.workspace.graph().edge_property(*edge_id).zone_ids.push_back(
+            zoneout::UUID("99999999-9999-4999-8999-999999999999"));
+
+        fixture.workspace.root_zone().node_ids().push_back(zoneout::UUID("abababab-abab-4bab-8bab-abababababab"));
+        return std::move(fixture.workspace);
+    }
+
 } // namespace
 
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
@@ -434,4 +457,31 @@ TEST_CASE("workspace index reads zone and edge properties") {
     REQUIRE(index.edge_property(fixture.edge_bc_id, "traffic.priority").has_value());
     CHECK(index.edge_property(fixture.edge_bc_id, "traffic.priority").value() == "yield");
     CHECK_FALSE(index.edge_property(fixture.edge_bc_id, "traffic.unknown").has_value());
+}
+
+TEST_CASE("workspace index reports validation issues for ids memberships and references") {
+    const auto invalid_workspace = make_invalid_workspace();
+    const timenav::WorkspaceIndex index{invalid_workspace};
+    const auto issues = index.validation_issues();
+
+    CHECK_FALSE(index.is_valid());
+    CHECK(issues.size() >= 4);
+
+    bool found_missing_id = false;
+    bool found_broken_membership = false;
+    bool found_invalid_reference = false;
+
+    for (const auto &issue : issues) {
+        if (issue.category == "missing_id") {
+            found_missing_id = true;
+        } else if (issue.category == "broken_membership") {
+            found_broken_membership = true;
+        } else if (issue.category == "invalid_reference") {
+            found_invalid_reference = true;
+        }
+    }
+
+    CHECK(found_missing_id);
+    CHECK(found_broken_membership);
+    CHECK(found_invalid_reference);
 }

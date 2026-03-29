@@ -9,6 +9,11 @@
 
 namespace timenav {
 
+    struct ValidationIssue {
+        dp::String category;
+        dp::String message;
+    };
+
     class WorkspaceIndex {
       public:
         WorkspaceIndex() = default;
@@ -191,6 +196,69 @@ namespace timenav {
 
             return dp::String{property_it->second};
         }
+        [[nodiscard]] dp::Vector<ValidationIssue> validation_issues() const {
+            dp::Vector<ValidationIssue> issues;
+
+            if (workspace_ == nullptr) {
+                return issues;
+            }
+
+            if (workspace_->coord_mode() == zoneout::CoordMode::Local && !workspace_->has_ref()) {
+                issues.push_back(
+                    ValidationIssue{dp::String{"invalid_reference"},
+                                    dp::String{"workspace uses local coordinates without a reference origin"}});
+            }
+
+            for (const auto &[zone_id, zone_data] : zones_) {
+                if (zone_id.isNull()) {
+                    issues.push_back(
+                        ValidationIssue{dp::String{"missing_id"}, dp::String{"zone is missing a non-null id"}});
+                }
+
+                for (const auto &node_id : zone_data->node_ids()) {
+                    if (node(node_id) == nullptr) {
+                        issues.push_back(ValidationIssue{
+                            dp::String{"broken_membership"},
+                            dp::String{"zone references node id that is not present in the workspace graph"}});
+                    }
+                }
+            }
+
+            for (const auto &[node_id, vertex_id] : nodes_) {
+                const auto &node_data = workspace_->graph()[vertex_id];
+                if (node_id.isNull()) {
+                    issues.push_back(
+                        ValidationIssue{dp::String{"missing_id"}, dp::String{"node is missing a non-null id"}});
+                }
+
+                for (const auto &zone_id : node_data.zone_ids) {
+                    if (zone(zone_id) == nullptr) {
+                        issues.push_back(ValidationIssue{
+                            dp::String{"broken_membership"},
+                            dp::String{"node references zone id that is not present in the workspace tree"}});
+                    }
+                }
+            }
+
+            for (const auto &[edge_uuid, edge_id] : edges_) {
+                const auto &edge_data = workspace_->graph().edge_property(edge_id);
+                if (edge_uuid.isNull()) {
+                    issues.push_back(
+                        ValidationIssue{dp::String{"missing_id"}, dp::String{"edge is missing a non-null id"}});
+                }
+
+                for (const auto &zone_id : edge_data.zone_ids) {
+                    if (zone(zone_id) == nullptr) {
+                        issues.push_back(ValidationIssue{
+                            dp::String{"broken_membership"},
+                            dp::String{"edge references zone id that is not present in the workspace tree"}});
+                    }
+                }
+            }
+
+            return issues;
+        }
+        [[nodiscard]] bool is_valid() const { return validation_issues().empty(); }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();
