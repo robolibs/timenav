@@ -120,6 +120,26 @@ namespace timenav {
         return released;
     }
 
+    inline dp::Vector<zoneout::UUID> route_schedule_window_conflicts(const WorkspaceIndex &index,
+                                                                     const RoutePlan &route_plan,
+                                                                     std::string_view active_window) {
+        dp::Vector<zoneout::UUID> conflicting_zone_ids;
+
+        for (const auto &zone_id : route_plan.traversed_zone_ids) {
+            const auto schedule_window = index.zone_property(zone_id, "traffic.schedule_window");
+            if (schedule_window.has_value() && schedule_window.value() != active_window) {
+                conflicting_zone_ids.push_back(zone_id);
+            }
+        }
+
+        return conflicting_zone_ids;
+    }
+
+    inline bool route_matches_schedule_window(const WorkspaceIndex &index, const RoutePlan &route_plan,
+                                              std::string_view active_window) {
+        return route_schedule_window_conflicts(index, route_plan, active_window).empty();
+    }
+
     class Coordinator {
       public:
         Coordinator() = default;

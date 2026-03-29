@@ -470,6 +470,27 @@ TEST_CASE("coordinator releases leases behind current progress") {
     CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{202}) != nullptr);
 }
 
+TEST_CASE("schedule window helpers detect route zone conflicts") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.root_zone().children()[0].set_property("traffic.schedule_window", "day");
+    fixture.workspace.root_zone().children()[1].set_property("traffic.schedule_window", "night");
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    const auto conflicts = timenav::route_schedule_window_conflicts(index, route_plan.value(), "day");
+
+    REQUIRE(conflicts.size() == 1);
+    CHECK(conflicts[0] == fixture.workspace.root_zone().children()[1].id());
+    CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "day"));
+    CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "night"));
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
