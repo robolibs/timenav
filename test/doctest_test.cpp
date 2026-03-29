@@ -254,6 +254,42 @@ TEST_CASE("traffic parsing utilities parse booleans numbers and strings") {
     CHECK(timenav::parse_traffic_string("").is_err());
 }
 
+TEST_CASE("traffic property validation reports malformed values") {
+    const std::unordered_map<std::string, std::string> bad_zone_properties = {
+        {"traffic.policy", "mystery"},
+        {"traffic.capacity", "0"},
+        {"traffic.speed_limit", "-1.0"},
+        {"traffic.claim_required", "sometimes"},
+    };
+    const auto zone_issues = timenav::validate_zone_traffic_properties(bad_zone_properties);
+
+    REQUIRE(zone_issues.size() == 4);
+    dp::u64 zone_warnings = 0;
+    dp::u64 zone_errors = 0;
+    for (const auto &issue : zone_issues) {
+        if (issue.severity == timenav::TrafficIssueSeverity::Warning) {
+            ++zone_warnings;
+        } else if (issue.severity == timenav::TrafficIssueSeverity::Error) {
+            ++zone_errors;
+        }
+    }
+    CHECK(zone_warnings == 1);
+    CHECK(zone_errors == 3);
+
+    const std::unordered_map<std::string, std::string> bad_edge_properties = {
+        {"traffic.capacity", "0"},
+        {"traffic.speed_limit", "slow"},
+        {"traffic.clearance_width", "-2.0"},
+        {"traffic.no_stop", "later"},
+    };
+    const auto edge_issues = timenav::validate_edge_traffic_properties(bad_edge_properties);
+
+    REQUIRE(edge_issues.size() == 4);
+    for (const auto &issue : edge_issues) {
+        CHECK(issue.severity == timenav::TrafficIssueSeverity::Error);
+    }
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};

@@ -19,6 +19,14 @@ namespace timenav {
         Slowdown
     };
 
+    enum class TrafficIssueSeverity { Warning, Error };
+
+    struct TrafficParseIssue {
+        TrafficIssueSeverity severity = TrafficIssueSeverity::Error;
+        dp::String key;
+        dp::String message;
+    };
+
     struct ZonePolicy {
         ZonePolicyKind kind = ZonePolicyKind::Informational;
         dp::u64 capacity = 1;
@@ -110,6 +118,11 @@ namespace timenav {
                 return ZonePolicyKind::NoStop;
             }
             return ZonePolicyKind::Informational;
+        }
+
+        inline bool is_known_zone_policy_kind(const std::string &value) {
+            return value == "informational" || value == "exclusive" || value == "shared" || value == "corridor" ||
+                   value == "restricted" || value == "slow" || value == "replanning" || value == "no_stop";
         }
 
     } // namespace detail
@@ -292,6 +305,79 @@ namespace timenav {
         }
 
         return semantics;
+    }
+
+    inline dp::Vector<TrafficParseIssue>
+    validate_zone_traffic_properties(const std::unordered_map<std::string, std::string> &properties) {
+        dp::Vector<TrafficParseIssue> issues;
+
+        for (const auto &[key, value] : properties) {
+            if (key == "traffic.policy") {
+                if (!detail::is_known_zone_policy_kind(value)) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
+                                                       dp::String{"unknown zone policy keyword"}});
+                }
+            } else if (key == "traffic.capacity") {
+                const auto parsed = parse_traffic_u64(value);
+                if (parsed.is_err() || parsed.value_or(0) < 1) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic.capacity must be an integer >= 1"}});
+                }
+            } else if (key == "traffic.priority") {
+                if (parse_traffic_f64(value).is_err()) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic.priority must be numeric"}});
+                }
+            } else if (key == "traffic.speed_limit") {
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_err() || parsed.value_or(0.0) <= 0.0) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic.speed_limit must be positive"}});
+                }
+            } else if (key == "traffic.claim_required" || key == "traffic.waiting_allowed" ||
+                       key == "traffic.stop_allowed" || key == "traffic.blocked" || key == "traffic.replan_trigger") {
+                if (parse_traffic_bool(value).is_err()) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic boolean key must parse as true/false"}});
+                }
+            }
+        }
+
+        return issues;
+    }
+
+    inline dp::Vector<TrafficParseIssue>
+    validate_edge_traffic_properties(const std::unordered_map<std::string, std::string> &properties) {
+        dp::Vector<TrafficParseIssue> issues;
+
+        for (const auto &[key, value] : properties) {
+            if (key == "traffic.capacity") {
+                const auto parsed = parse_traffic_u64(value);
+                if (parsed.is_err() || parsed.value_or(0) < 1) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic.capacity must be an integer >= 1"}});
+                }
+            } else if (key == "traffic.speed_limit" || key == "traffic.priority" || key == "traffic.clearance_width" ||
+                       key == "traffic.clearance_height" || key == "traffic.cost_bias") {
+                const auto parsed = parse_traffic_f64(value);
+                if (parsed.is_err()) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic numeric key must parse as number"}});
+                } else if ((key == "traffic.speed_limit" || key == "traffic.clearance_width" ||
+                            key == "traffic.clearance_height") &&
+                           parsed.value() <= 0.0) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic positive numeric key must be > 0"}});
+                }
+            } else if (key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.no_stop") {
+                if (parse_traffic_bool(value).is_err()) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
+                                                       dp::String{"traffic boolean key must parse as true/false"}});
+                }
+            }
+        }
+
+        return issues;
     }
 
 } // namespace timenav
