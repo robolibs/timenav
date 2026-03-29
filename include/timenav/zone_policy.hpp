@@ -161,6 +161,28 @@ namespace timenav {
         return dp::Result<dp::String>::ok(dp::String{value.data()});
     }
 
+    /**
+     * Parse supported `zone.properties` traffic keys into a typed policy model.
+     *
+     * Supported zone keys:
+     * - `traffic.policy`
+     * - `traffic.capacity`
+     * - `traffic.priority`
+     * - `traffic.claim_required`
+     * - `traffic.entry_rule`
+     * - `traffic.exit_rule`
+     * - `traffic.speed_limit`
+     * - `traffic.waiting_allowed`
+     * - `traffic.stop_allowed`
+     * - `traffic.replan_trigger`
+     * - `traffic.blocked`
+     * - `traffic.robot_class`
+     * - `traffic.schedule_window`
+     * - `traffic.access_group`
+     *
+     * Example:
+     * `{"traffic.policy":"exclusive","traffic.capacity":"2","traffic.claim_required":"true"}`
+     */
     inline ZonePolicy parse_zone_policy(const std::unordered_map<std::string, std::string> &properties) {
         ZonePolicy policy{};
 
@@ -237,6 +259,27 @@ namespace timenav {
         return policy;
     }
 
+    /**
+     * Parse supported `edge.properties` traffic keys into typed traversal semantics.
+     *
+     * Supported edge keys:
+     * - `traffic.speed_limit`
+     * - `traffic.lane_type`
+     * - `traffic.reversible`
+     * - `traffic.passing_allowed`
+     * - `traffic.priority`
+     * - `traffic.capacity`
+     * - `traffic.clearance_width`
+     * - `traffic.clearance_height`
+     * - `traffic.surface_type`
+     * - `traffic.robot_class`
+     * - `traffic.allowed_payload`
+     * - `traffic.cost_bias`
+     * - `traffic.no_stop`
+     * - `traffic.preferred_direction`
+     *
+     * The `directed` argument is structural and therefore wins over any property hint.
+     */
     inline EdgeTrafficSemantics
     parse_edge_traffic_semantics(const std::unordered_map<std::string, std::string> &properties,
                                  bool directed = false) {
@@ -380,6 +423,15 @@ namespace timenav {
         return issues;
     }
 
+    /**
+     * Merge recursive zone policies deterministically.
+     *
+     * Rules:
+     * - `Restricted` dominates everything.
+     * - `ExclusiveAccess` dominates `SharedAccess`.
+     * - smaller capacity wins when capacity is explicitly constrained.
+     * - child optionals override inherited values when present.
+     */
     inline ZonePolicy merge_zone_policy(const ZonePolicy &parent, const ZonePolicy &child) {
         ZonePolicy merged = parent;
 
@@ -445,6 +497,12 @@ namespace timenav {
         return merged;
     }
 
+    /**
+     * Combine structural edge facts, parsed edge properties, and containing-zone restrictions.
+     *
+     * Example:
+     * `derive_effective_edge_semantics(edge_props, true, zone_policies)`
+     */
     inline EdgeTrafficSemantics
     derive_effective_edge_semantics(const std::unordered_map<std::string, std::string> &properties, bool directed,
                                     const dp::Vector<ZonePolicy> &zone_policies = {}) {
