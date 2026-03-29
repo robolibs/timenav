@@ -1196,7 +1196,7 @@ Target:
 ### Milestone 1: Workspace Index Foundation
 
 - [x] Slice 1.1: add `ids.hpp` with strong id wrappers for robot, mission, claim, and lease ids
-- [ ] Slice 1.2: switch the new ids to preferred `dp::` scalar/string types where applicable
+- [x] Slice 1.2: switch the new ids to preferred `dp::` scalar/string types where applicable
 - [ ] Slice 1.3: add `workspace_index.hpp` scaffold and empty `WorkspaceIndex` type
 - [ ] Slice 1.4: add workspace ownership/reference handling in `WorkspaceIndex`
 - [ ] Slice 1.5: add zone lookup by UUID

@@ -16,3 +16,11 @@ TEST_CASE("timenav strong id wrappers stay distinct") {
     CHECK(robot_id == timenav::RobotId{7});
     CHECK_FALSE(robot_id == timenav::RobotId{8});
 }
+
+TEST_CASE("timenav ids use datapod strong scalar types") {
+    const timenav::RobotId robot_id{42};
+
+    CHECK(std::is_same_v<timenav::IdScalar, dp::u64>);
+    CHECK(std::is_base_of_v<dp::Strong<dp::u64, timenav::detail::RobotIdTag>, timenav::RobotId>);
+    CHECK(robot_id.raw() == static_cast<dp::u64>(42));
+}

@@ -1,59 +1,44 @@
 #pragma once
 
-#include <cstdint>
+#include <datapod/datapod.hpp>
 
 namespace timenav {
 
-    struct RobotId {
-        using value_type = std::uint64_t;
+    using IdScalar = dp::u64;
 
-        value_type value = 0;
+    namespace detail {
+        struct RobotIdTag;
+        struct MissionIdTag;
+        struct ClaimIdTag;
+        struct LeaseIdTag;
+    } // namespace detail
 
-        constexpr RobotId() noexcept = default;
-        explicit constexpr RobotId(value_type raw_value) noexcept : value(raw_value) {}
+    class RobotId : public dp::Strong<IdScalar, detail::RobotIdTag> {
+      public:
+        using dp::Strong<IdScalar, detail::RobotIdTag>::Strong;
 
-        [[nodiscard]] constexpr value_type raw() const noexcept { return value; }
-
-        friend constexpr bool operator==(RobotId lhs, RobotId rhs) noexcept = default;
+        [[nodiscard]] constexpr IdScalar raw() const noexcept { return this->v_; }
     };
 
-    struct MissionId {
-        using value_type = std::uint64_t;
+    class MissionId : public dp::Strong<IdScalar, detail::MissionIdTag> {
+      public:
+        using dp::Strong<IdScalar, detail::MissionIdTag>::Strong;
 
-        value_type value = 0;
-
-        constexpr MissionId() noexcept = default;
-        explicit constexpr MissionId(value_type raw_value) noexcept : value(raw_value) {}
-
-        [[nodiscard]] constexpr value_type raw() const noexcept { return value; }
-
-        friend constexpr bool operator==(MissionId lhs, MissionId rhs) noexcept = default;
+        [[nodiscard]] constexpr IdScalar raw() const noexcept { return this->v_; }
     };
 
-    struct ClaimId {
-        using value_type = std::uint64_t;
+    class ClaimId : public dp::Strong<IdScalar, detail::ClaimIdTag> {
+      public:
+        using dp::Strong<IdScalar, detail::ClaimIdTag>::Strong;
 
-        value_type value = 0;
-
-        constexpr ClaimId() noexcept = default;
-        explicit constexpr ClaimId(value_type raw_value) noexcept : value(raw_value) {}
-
-        [[nodiscard]] constexpr value_type raw() const noexcept { return value; }
-
-        friend constexpr bool operator==(ClaimId lhs, ClaimId rhs) noexcept = default;
+        [[nodiscard]] constexpr IdScalar raw() const noexcept { return this->v_; }
     };
 
-    struct LeaseId {
-        using value_type = std::uint64_t;
+    class LeaseId : public dp::Strong<IdScalar, detail::LeaseIdTag> {
+      public:
+        using dp::Strong<IdScalar, detail::LeaseIdTag>::Strong;
 
-        value_type value = 0;
-
-        constexpr LeaseId() noexcept = default;
-        explicit constexpr LeaseId(value_type raw_value) noexcept : value(raw_value) {}
-
-        [[nodiscard]] constexpr value_type raw() const noexcept { return value; }
-
-        friend constexpr bool operator==(LeaseId lhs, LeaseId rhs) noexcept = default;
+        [[nodiscard]] constexpr IdScalar raw() const noexcept { return this->v_; }
     };
 
 } // namespace timenav
