@@ -504,6 +504,57 @@ TEST_CASE("arbitration hooks choose proceed yield or replan from simple priority
           timenav::ArbitrationDecision::Replan);
 }
 
+TEST_CASE("coordinator regression covers multi-robot progress release and scheduling conflicts") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.root_zone().children()[0].set_property("traffic.schedule_window", "day");
+    fixture.workspace.root_zone().children()[1].set_property("traffic.schedule_window", "night");
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState robot_one{};
+    robot_one.robot_id = timenav::RobotId{71};
+    robot_one.route_plan = route_plan.value();
+    robot_one.current_node_id = fixture.node_b_id;
+    robot_one.active_lease_ids.push_back(timenav::LeaseId{301});
+    robot_one.active_lease_ids.push_back(timenav::LeaseId{302});
+    coordinator.register_robot(robot_one);
+
+    timenav::RobotState robot_two{};
+    robot_two.robot_id = timenav::RobotId{72};
+    robot_two.route_plan = route_plan.value();
+    robot_two.current_node_id = fixture.node_a_id;
+    coordinator.register_robot(robot_two);
+
+    timenav::Lease behind{};
+    behind.id = timenav::LeaseId{301};
+    behind.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, fixture.node_a_id});
+    coordinator.claim_manager().add_lease(behind);
+
+    timenav::Lease ahead{};
+    ahead.id = timenav::LeaseId{302};
+    ahead.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_bc_id});
+    coordinator.claim_manager().add_lease(ahead);
+
+    CHECK(coordinator.update_robot_progress(timenav::RobotId{71}, fixture.node_b_id, fixture.edge_bc_id, 7));
+    CHECK(coordinator.release_behind_progress(timenav::RobotId{71}) == 1);
+    CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{301}) == nullptr);
+    CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{302}) != nullptr);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{71}) != nullptr);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{71})->active_lease_ids.size() == 1);
+
+    const auto conflicts = timenav::route_schedule_window_conflicts(index, route_plan.value(), "day");
+    CHECK(conflicts.size() == 1);
+    CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "day"));
+    CHECK(coordinator.robot_count() == 2);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
