@@ -1211,6 +1211,59 @@ TEST_CASE("route extraction builds traversed nodes edges zones and steps") {
     CHECK(route_plan.value().total_cost == doctest::Approx(2.0));
 }
 
+TEST_CASE("route extraction can derive traversal entities directly from search state") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto search = timenav::shortest_path_search(index, fixture.node_a_id, fixture.node_c_id);
+    REQUIRE(search.found);
+
+    const auto traversed_nodes = timenav::extract_traversed_node_ids(search, fixture.node_a_id, fixture.node_c_id);
+    const auto traversed_edges =
+        timenav::extract_traversed_edge_ids(index, search, fixture.node_a_id, fixture.node_c_id);
+    const auto traversed_zones =
+        timenav::extract_traversed_zone_ids(index, search, fixture.node_a_id, fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, search, fixture.node_a_id, fixture.node_c_id);
+
+    REQUIRE(traversed_nodes.is_ok());
+    REQUIRE(traversed_edges.is_ok());
+    REQUIRE(traversed_zones.is_ok());
+    REQUIRE(route_plan.is_ok());
+    CHECK(traversed_nodes.value().size() == 3);
+    CHECK(traversed_nodes.value()[0] == fixture.node_a_id);
+    CHECK(traversed_nodes.value()[1] == fixture.node_b_id);
+    CHECK(traversed_nodes.value()[2] == fixture.node_c_id);
+    CHECK(traversed_edges.value().size() == 2);
+    CHECK(traversed_edges.value()[0] == fixture.edge_ab_id);
+    CHECK(traversed_edges.value()[1] == fixture.edge_bc_id);
+    CHECK(route_plan.value().traversed_node_ids == traversed_nodes.value());
+    CHECK(route_plan.value().traversed_edge_ids == traversed_edges.value());
+    CHECK(route_plan.value().traversed_zone_ids == traversed_zones.value());
+}
+
+TEST_CASE("route extraction reports broken predecessor chains") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    timenav::RouteSearchState broken_search{};
+    broken_search.found = true;
+    broken_search.distance = 2.0;
+    broken_search.distances[fixture.node_a_id] = 0.0;
+    broken_search.distances[fixture.node_c_id] = 2.0;
+
+    const auto traversed_nodes = timenav::extract_traversed_node_ids(broken_search, fixture.node_a_id, fixture.node_c_id);
+    const auto traversed_edges =
+        timenav::extract_traversed_edge_ids(index, broken_search, fixture.node_a_id, fixture.node_c_id);
+    const auto traversed_zones =
+        timenav::extract_traversed_zone_ids(index, broken_search, fixture.node_a_id, fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, broken_search, fixture.node_a_id, fixture.node_c_id);
+
+    CHECK(traversed_nodes.is_err());
+    CHECK(traversed_edges.is_err());
+    CHECK(traversed_zones.is_err());
+    CHECK(route_plan.is_err());
+}
+
 TEST_CASE("planner failure reporting distinguishes unreachable and policy-blocked routes") {
     {
         const auto fixture = make_blocked_only_route_workspace();

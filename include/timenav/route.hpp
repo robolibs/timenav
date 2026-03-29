@@ -64,6 +64,17 @@ namespace timenav {
     inline dp::Result<dp::f64> accumulate_route_cost(const WorkspaceIndex &index,
                                                      const dp::Vector<zoneout::UUID> &route_nodes,
                                                      RouteCostModel cost_model);
+    inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_node_ids(const RouteSearchState &search,
+                                                                            const zoneout::UUID &start_node_id,
+                                                                            const zoneout::UUID &goal_node_id);
+    inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_edge_ids(const WorkspaceIndex &index,
+                                                                            const RouteSearchState &search,
+                                                                            const zoneout::UUID &start_node_id,
+                                                                            const zoneout::UUID &goal_node_id);
+    inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_zone_ids(const WorkspaceIndex &index,
+                                                                            const RouteSearchState &search,
+                                                                            const zoneout::UUID &start_node_id,
+                                                                            const zoneout::UUID &goal_node_id);
 
     inline bool allows_traversal_from_node(const zoneout::EdgeData &edge_data, bool from_source) {
         const auto semantics = parse_edge_traffic_semantics(edge_data.properties);
@@ -411,6 +422,22 @@ namespace timenav {
         return nodes;
     }
 
+    inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_node_ids(const RouteSearchState &search,
+                                                                            const zoneout::UUID &start_node_id,
+                                                                            const zoneout::UUID &goal_node_id) {
+        if (!search.found) {
+            return dp::Result<dp::Vector<zoneout::UUID>>::ok({});
+        }
+
+        const auto route_nodes = reconstruct_route_nodes(search, start_node_id, goal_node_id);
+        if (route_nodes.empty() && !(start_node_id == goal_node_id)) {
+            return dp::Result<dp::Vector<zoneout::UUID>>::err(
+                dp::Error::not_found("route reconstruction could not recover a predecessor chain"));
+        }
+
+        return dp::Result<dp::Vector<zoneout::UUID>>::ok(route_nodes);
+    }
+
     inline dp::Result<dp::Vector<RouteStep>> reconstruct_route_steps(const WorkspaceIndex &index,
                                                                      const RouteSearchState &search,
                                                                      const zoneout::UUID &start_node_id,
@@ -512,6 +539,18 @@ namespace timenav {
         return dp::Result<dp::Vector<zoneout::UUID>>::ok(traversed_edge_ids);
     }
 
+    inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_edge_ids(const WorkspaceIndex &index,
+                                                                            const RouteSearchState &search,
+                                                                            const zoneout::UUID &start_node_id,
+                                                                            const zoneout::UUID &goal_node_id) {
+        const auto route_nodes = extract_traversed_node_ids(search, start_node_id, goal_node_id);
+        if (route_nodes.is_err()) {
+            return dp::Result<dp::Vector<zoneout::UUID>>::err(route_nodes.error());
+        }
+
+        return extract_traversed_edge_ids(index, route_nodes.value());
+    }
+
     inline dp::Result<dp::Vector<zoneout::UUID>>
     extract_traversed_zone_ids(const WorkspaceIndex &index, const dp::Vector<zoneout::UUID> &route_nodes) {
         dp::Vector<zoneout::UUID> traversed_zone_ids;
@@ -539,6 +578,18 @@ namespace timenav {
         }
 
         return dp::Result<dp::Vector<zoneout::UUID>>::ok(traversed_zone_ids);
+    }
+
+    inline dp::Result<dp::Vector<zoneout::UUID>> extract_traversed_zone_ids(const WorkspaceIndex &index,
+                                                                            const RouteSearchState &search,
+                                                                            const zoneout::UUID &start_node_id,
+                                                                            const zoneout::UUID &goal_node_id) {
+        const auto route_nodes = extract_traversed_node_ids(search, start_node_id, goal_node_id);
+        if (route_nodes.is_err()) {
+            return dp::Result<dp::Vector<zoneout::UUID>>::err(route_nodes.error());
+        }
+
+        return extract_traversed_zone_ids(index, route_nodes.value());
     }
 
     inline dp::Result<RoutePlan> build_route_plan(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
@@ -588,6 +639,17 @@ namespace timenav {
         return dp::Result<RoutePlan>::ok(plan);
     }
 
+    inline dp::Result<RoutePlan> build_route_plan(const WorkspaceIndex &index, const RouteSearchState &search,
+                                                  const zoneout::UUID &start_node_id,
+                                                  const zoneout::UUID &goal_node_id) {
+        const auto route_nodes = extract_traversed_node_ids(search, start_node_id, goal_node_id);
+        if (route_nodes.is_err()) {
+            return dp::Result<RoutePlan>::err(route_nodes.error());
+        }
+
+        return build_route_plan(index, start_node_id, goal_node_id, route_nodes.value());
+    }
+
     inline RouteFailure diagnose_route_failure(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
                                                const zoneout::UUID &goal_node_id) {
         if (index.node(start_node_id) == nullptr) {
@@ -628,8 +690,7 @@ namespace timenav {
             return result;
         }
 
-        const auto route_nodes = reconstruct_route_nodes(result.search, start_node_id, goal_node_id);
-        const auto route_plan = build_route_plan(index, start_node_id, goal_node_id, route_nodes);
+        const auto route_plan = build_route_plan(index, result.search, start_node_id, goal_node_id);
         if (route_plan.is_err()) {
             result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}};
             return result;
