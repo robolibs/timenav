@@ -56,6 +56,9 @@ namespace timenav {
         dp::Optional<dp::String> lane_type;
         dp::Optional<bool> reversible;
         dp::Optional<bool> passing_allowed;
+        dp::Optional<bool> requires_claim;
+        dp::Optional<bool> waiting_allowed;
+        dp::Optional<bool> stop_allowed;
         dp::Optional<bool> blocked;
         dp::Optional<dp::f64> priority;
         dp::Optional<dp::u64> capacity;
@@ -68,6 +71,8 @@ namespace timenav {
         dp::Optional<dp::f64> cost_bias;
         dp::Optional<bool> no_stop;
         dp::Optional<dp::String> preferred_direction;
+        dp::Optional<dp::String> schedule_window;
+        dp::Optional<dp::String> access_group;
         dp::Map<dp::String, dp::String> properties;
     };
 
@@ -163,7 +168,20 @@ namespace timenav {
                    key == "traffic.clearance_width" || key == "traffic.clearance_height" ||
                    key == "traffic.surface_type" || key == "traffic.robot_class" || key == "traffic.allowed_payload" ||
                    key == "traffic.cost_bias" || key == "traffic.no_stop" || key == "traffic.preferred_direction" ||
-                   key == "traffic.direction";
+                   key == "traffic.direction" || key == "traffic.claim_required" || key == "traffic.waiting_allowed" ||
+                   key == "traffic.stop_allowed" || key == "traffic.schedule_window" || key == "traffic.access_group";
+        }
+
+        inline void sort_traffic_issues(dp::Vector<TrafficParseIssue> &issues) {
+            std::sort(issues.begin(), issues.end(), [](const TrafficParseIssue &lhs, const TrafficParseIssue &rhs) {
+                if (lhs.key != rhs.key) {
+                    return lhs.key < rhs.key;
+                }
+                if (lhs.severity != rhs.severity) {
+                    return static_cast<int>(lhs.severity) < static_cast<int>(rhs.severity);
+                }
+                return lhs.message < rhs.message;
+            });
         }
 
     } // namespace detail
@@ -357,6 +375,11 @@ namespace timenav {
      * - `traffic.no_stop`
      * - `traffic.preferred_direction`
      * - `traffic.direction` (alias of `traffic.preferred_direction`)
+     * - `traffic.claim_required`
+     * - `traffic.waiting_allowed`
+     * - `traffic.stop_allowed`
+     * - `traffic.schedule_window`
+     * - `traffic.access_group`
      *
      * The `directed` argument is structural and therefore wins over any property hint.
      */
@@ -385,6 +408,21 @@ namespace timenav {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.passing_allowed = parsed.value();
+                }
+            } else if (key == "traffic.claim_required") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.requires_claim = parsed.value();
+                }
+            } else if (key == "traffic.waiting_allowed") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.waiting_allowed = parsed.value();
+                }
+            } else if (key == "traffic.stop_allowed") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    semantics.stop_allowed = parsed.value();
                 }
             } else if (key == "traffic.blocked") {
                 const auto parsed = parse_traffic_bool(value);
@@ -430,7 +468,15 @@ namespace timenav {
                 }
             } else if (key == "traffic.preferred_direction" || key == "traffic.direction") {
                 semantics.preferred_direction = dp::String{value};
+            } else if (key == "traffic.schedule_window") {
+                semantics.schedule_window = dp::String{value};
+            } else if (key == "traffic.access_group") {
+                semantics.access_group = dp::String{value};
             }
+        }
+
+        if (semantics.no_stop.value_or(false)) {
+            semantics.stop_allowed = false;
         }
 
         return semantics;
@@ -483,6 +529,19 @@ namespace timenav {
             }
         }
 
+        if (const auto no_stop_it = properties.find("traffic.no_stop");
+            no_stop_it != properties.end() && detail::parse_bool_relaxed(no_stop_it->second).value_or(false)) {
+            if (const auto stop_allowed_it = properties.find("traffic.stop_allowed");
+                stop_allowed_it != properties.end() &&
+                detail::parse_bool_relaxed(stop_allowed_it->second).value_or(false)) {
+                issues.push_back(
+                    TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{"traffic.stop_allowed"},
+                                      dp::String{"traffic.stop_allowed=true conflicts with traffic.no_stop=true"}});
+            }
+        }
+
+        detail::sort_traffic_issues(issues);
+
         return issues;
     }
 
@@ -513,20 +572,35 @@ namespace timenav {
                                                        dp::String{"traffic positive numeric key must be > 0"}});
                 }
             } else if (key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.no_stop" ||
-                       key == "traffic.blocked") {
+                       key == "traffic.blocked" || key == "traffic.claim_required" ||
+                       key == "traffic.waiting_allowed" || key == "traffic.stop_allowed") {
                 if (parse_traffic_bool(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic boolean key must parse as true/false"}});
                 }
             } else if (key == "traffic.lane_type" || key == "traffic.lane_kind" || key == "traffic.surface_type" ||
                        key == "traffic.robot_class" || key == "traffic.allowed_payload" ||
-                       key == "traffic.preferred_direction" || key == "traffic.direction") {
+                       key == "traffic.preferred_direction" || key == "traffic.direction" ||
+                       key == "traffic.schedule_window" || key == "traffic.access_group") {
                 if (parse_traffic_string(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic string key must not be empty"}});
                 }
             }
         }
+
+        if (const auto no_stop_it = properties.find("traffic.no_stop");
+            no_stop_it != properties.end() && detail::parse_bool_relaxed(no_stop_it->second).value_or(false)) {
+            if (const auto stop_allowed_it = properties.find("traffic.stop_allowed");
+                stop_allowed_it != properties.end() &&
+                detail::parse_bool_relaxed(stop_allowed_it->second).value_or(true)) {
+                issues.push_back(
+                    TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{"traffic.stop_allowed"},
+                                      dp::String{"traffic.stop_allowed=true conflicts with traffic.no_stop=true"}});
+            }
+        }
+
+        detail::sort_traffic_issues(issues);
 
         return issues;
     }
@@ -612,6 +686,10 @@ namespace timenav {
         if (merged.kind == ZonePolicyKind::Restricted) {
             merged.blocks_entry_without_grant = true;
             merged.blocks_traversal_without_grant = true;
+            merged.waiting_allowed = false;
+            merged.stop_allowed = false;
+        } else if (merged.kind == ZonePolicyKind::NoStop) {
+            merged.stop_allowed = false;
         }
 
         return merged;
@@ -651,6 +729,21 @@ namespace timenav {
             if (!semantics.robot_class.has_value() && zone_policy.robot_class.has_value()) {
                 semantics.robot_class = zone_policy.robot_class;
             }
+            if (!semantics.schedule_window.has_value() && zone_policy.schedule_window.has_value()) {
+                semantics.schedule_window = zone_policy.schedule_window;
+            }
+            if (!semantics.access_group.has_value() && zone_policy.access_group.has_value()) {
+                semantics.access_group = zone_policy.access_group;
+            }
+            if (!semantics.waiting_allowed.has_value() && zone_policy.waiting_allowed.has_value()) {
+                semantics.waiting_allowed = zone_policy.waiting_allowed;
+            }
+            if (!semantics.stop_allowed.has_value() && zone_policy.stop_allowed.has_value()) {
+                semantics.stop_allowed = zone_policy.stop_allowed;
+            }
+            if (!semantics.requires_claim.has_value()) {
+                semantics.requires_claim = zone_policy.requires_claim;
+            }
 
             if (!semantics.priority.has_value() && zone_policy.priority.has_value()) {
                 semantics.priority = zone_policy.priority;
@@ -659,6 +752,7 @@ namespace timenav {
             if (zone_policy.kind == ZonePolicyKind::NoStop || zone_policy.blocked.value_or(false) ||
                 zone_policy.kind == ZonePolicyKind::Restricted) {
                 semantics.no_stop = true;
+                semantics.stop_allowed = false;
             }
 
             if (zone_policy.blocked.value_or(false) || zone_policy.kind == ZonePolicyKind::Restricted) {

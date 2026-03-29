@@ -1251,9 +1251,9 @@ Current state:
 Still missing / still weak:
 
 - [ ] align remaining internals more consistently with `dp::` conventions
-- [ ] harden validation coverage and failure reporting
-- [ ] verify reference / coord-mode handling against all intended `zoneout` workflows
-- [ ] add stronger test coverage for malformed memberships and invalid references
+- [x] harden validation coverage and failure reporting
+- [x] verify reference / coord-mode handling against all intended `zoneout` workflows
+- [x] add stronger test coverage for malformed memberships and invalid references
 
 - [x] Slice 1.1: add `ids.hpp` with strong id wrappers for robot, mission, claim, and lease ids
 - [x] Slice 1.2: switch the new ids to preferred `dp::` scalar/string types where applicable
@@ -1275,10 +1275,10 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] verify all coordinate transforms go through `concord::` only
-- [ ] tighten local/global workflow validation
-- [ ] add stronger edge-membership and hierarchy consistency tests
-- [ ] document exact behavior when `coord_mode` and `ref` do not agree
+- [x] verify all coordinate transforms go through `concord::` only
+- [x] tighten local/global workflow validation
+- [x] add stronger edge-membership and hierarchy consistency tests
+- [x] document exact behavior when `coord_mode` and `ref` do not agree
 
 - [x] Slice 2.1: add `nodes_in_zone(zone_id)` query
 - [x] Slice 2.2: add `zones_of_node(node_id)` query
@@ -1300,9 +1300,9 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] cover the full agreed `traffic.*` property set
-- [ ] finish stable validation/warning API for malformed property values
-- [ ] verify merge/inheritance rules exactly match the intended hierarchy semantics
+- [x] cover the full agreed `traffic.*` property set
+- [x] finish stable validation/warning API for malformed property values
+- [x] verify merge/inheritance rules exactly match the intended hierarchy semantics
 - [ ] cross-check parsing against the UI property editors now in use
 
 - [x] Slice 3.1: add `zone_policy.hpp` with typed zone policy enums and structs

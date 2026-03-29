@@ -2491,6 +2491,11 @@ TEST_CASE("effective edge semantics combine structural and zone-derived rules") 
         {"traffic.capacity", "3"},
         {"traffic.robot_class", "tow"},
         {"traffic.no_stop", "false"},
+        {"traffic.claim_required", "true"},
+        {"traffic.waiting_allowed", "true"},
+        {"traffic.stop_allowed", "true"},
+        {"traffic.schedule_window", "day"},
+        {"traffic.access_group", "tractors"},
     };
 
     timenav::ZonePolicy zone_a{};
@@ -2528,8 +2533,18 @@ TEST_CASE("effective edge semantics combine structural and zone-derived rules") 
     CHECK(semantics.priority.value() == doctest::Approx(5.0));
     REQUIRE(semantics.robot_class.has_value());
     CHECK(semantics.robot_class.value() == "tow");
+    REQUIRE(semantics.requires_claim.has_value());
+    CHECK(semantics.requires_claim.value());
+    REQUIRE(semantics.waiting_allowed.has_value());
+    CHECK(semantics.waiting_allowed.value());
     REQUIRE(semantics.no_stop.has_value());
     CHECK(semantics.no_stop.value());
+    REQUIRE(semantics.stop_allowed.has_value());
+    CHECK_FALSE(semantics.stop_allowed.value());
+    REQUIRE(semantics.schedule_window.has_value());
+    CHECK(semantics.schedule_window.value() == "day");
+    REQUIRE(semantics.access_group.has_value());
+    CHECK(semantics.access_group.value() == "tractors");
     REQUIRE(semantics.blocked.has_value());
     CHECK(semantics.blocked.value());
     REQUIRE(semantics.cost_bias.has_value());
@@ -2629,6 +2644,48 @@ TEST_CASE("policy aliases and explicit capacity flags stay stable across parsing
     CHECK(merged.capacity == 6);
     CHECK(merged.capacity_is_explicit);
     CHECK(merged.kind == timenav::ZonePolicyKind::NoStop);
+}
+
+TEST_CASE("traffic property validation is stable and covers the agreed edge property set") {
+    const std::unordered_map<std::string, std::string> edge_properties = {
+        {"traffic.claim_required", "true"},
+        {"traffic.waiting_allowed", "false"},
+        {"traffic.stop_allowed", "true"},
+        {"traffic.schedule_window", "day"},
+        {"traffic.access_group", "agv"},
+        {"traffic.lane_kind", "corridor"},
+        {"traffic.direction", "forward"},
+        {"traffic.no_stop", "true"},
+    };
+    const auto semantics = timenav::parse_edge_traffic_semantics(edge_properties, true);
+    REQUIRE(semantics.requires_claim.has_value());
+    CHECK(semantics.requires_claim.value());
+    REQUIRE(semantics.waiting_allowed.has_value());
+    CHECK_FALSE(semantics.waiting_allowed.value());
+    REQUIRE(semantics.stop_allowed.has_value());
+    CHECK_FALSE(semantics.stop_allowed.value());
+    REQUIRE(semantics.schedule_window.has_value());
+    CHECK(semantics.schedule_window.value() == "day");
+    REQUIRE(semantics.access_group.has_value());
+    CHECK(semantics.access_group.value() == "agv");
+    REQUIRE(semantics.lane_type.has_value());
+    CHECK(semantics.lane_type.value() == "corridor");
+    REQUIRE(semantics.preferred_direction.has_value());
+    CHECK(semantics.preferred_direction.value() == "forward");
+
+    const std::unordered_map<std::string, std::string> unstable_properties = {
+        {"traffic.z_last_unknown", "1"},
+        {"traffic.stop_allowed", "true"},
+        {"traffic.no_stop", "true"},
+        {"traffic.access_group", "   "},
+        {"traffic.a_first_unknown", "2"},
+    };
+    const auto issues = timenav::validate_edge_traffic_properties(unstable_properties);
+    REQUIRE(issues.size() == 4);
+    CHECK(issues[0].key == "traffic.a_first_unknown");
+    CHECK(issues[1].key == "traffic.access_group");
+    CHECK(issues[2].key == "traffic.stop_allowed");
+    CHECK(issues[3].key == "traffic.z_last_unknown");
 }
 
 TEST_CASE("timenav strong id wrappers stay distinct") {
@@ -2974,6 +3031,21 @@ TEST_CASE("workspace index converts local and global coordinates with concord") 
     CHECK(round_trip_local.value().z == doctest::Approx(1.0).epsilon(1e-6));
 }
 
+TEST_CASE("workspace index rejects concord conversions when coord_mode and ref do not support them") {
+    auto global_fixture = make_test_workspace();
+    global_fixture.workspace.set_coord_mode(zoneout::CoordMode::Global);
+    const timenav::WorkspaceIndex global_index{global_fixture.workspace};
+    CHECK(global_index.local_to_global(dp::Point{1.0, 2.0, 0.0}).is_err());
+    CHECK(global_index.global_to_local(dp::Geo{52.0, 5.0, 10.0}).is_err());
+
+    auto local_without_ref_fixture = make_test_workspace();
+    local_without_ref_fixture.workspace.clear_ref();
+    local_without_ref_fixture.workspace.set_coord_mode(zoneout::CoordMode::Local);
+    const timenav::WorkspaceIndex local_without_ref_index{local_without_ref_fixture.workspace};
+    CHECK(local_without_ref_index.local_to_global(dp::Point{1.0, 2.0, 0.0}).is_err());
+    CHECK(local_without_ref_index.global_to_local(dp::Geo{52.0, 5.0, 10.0}).is_err());
+}
+
 TEST_CASE("workspace index reads zone and edge properties") {
     const auto fixture = make_test_workspace();
     const auto &root = fixture.workspace.root_zone();
@@ -3005,8 +3077,12 @@ TEST_CASE("workspace index reports validation issues for ids memberships and ref
     bool found_missing_id = false;
     bool found_broken_membership = false;
     bool found_invalid_reference = false;
+    bool saw_error_severity = false;
 
     for (const auto &issue : issues) {
+        if (issue.severity == timenav::ValidationIssue::Severity::Error) {
+            saw_error_severity = true;
+        }
         if (issue.category == "missing_id") {
             found_missing_id = true;
         } else if (issue.category == "broken_membership") {
@@ -3019,6 +3095,44 @@ TEST_CASE("workspace index reports validation issues for ids memberships and ref
     CHECK(found_missing_id);
     CHECK(found_broken_membership);
     CHECK(found_invalid_reference);
+    CHECK(saw_error_severity);
+}
+
+TEST_CASE("workspace index reports coord-mode mismatches and inconsistent memberships precisely") {
+    auto fixture = make_test_workspace();
+    fixture.workspace.set_coord_mode(zoneout::CoordMode::Global);
+    auto &child_a = fixture.workspace.root_zone().children()[0];
+    child_a.node_ids().push_back(fixture.node_c_id);
+
+    const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+    REQUIRE(edge_ab.has_value());
+    fixture.workspace.graph().edge_property(*edge_ab).zone_ids.push_back(child_a.children()[0].id());
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const auto issues = index.validation_issues();
+
+    bool found_ignored_reference = false;
+    bool found_zone_membership_mismatch = false;
+    bool found_edge_membership_warning = false;
+    for (const auto &issue : issues) {
+        if (issue.category == "ignored_reference") {
+            found_ignored_reference = true;
+            CHECK(issue.severity == timenav::ValidationIssue::Severity::Warning);
+            CHECK(issue.resource_kind == "workspace");
+        } else if (issue.category == "inconsistent_membership" && issue.resource_kind == "zone") {
+            found_zone_membership_mismatch = true;
+            REQUIRE(issue.resource_id.has_value());
+            CHECK(issue.resource_id.value() == child_a.id());
+        } else if (issue.category == "inconsistent_membership" && issue.resource_kind == "edge") {
+            found_edge_membership_warning = true;
+            REQUIRE(issue.resource_id.has_value());
+            CHECK(issue.resource_id.value() == fixture.edge_ab_id);
+        }
+    }
+
+    CHECK(found_ignored_reference);
+    CHECK(found_zone_membership_mismatch);
+    CHECK(found_edge_membership_warning);
 }
 
 TEST_CASE("workspace index milestone two regression covers memberships hierarchy and coordinate access") {

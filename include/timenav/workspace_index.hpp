@@ -10,7 +10,12 @@
 namespace timenav {
 
     struct ValidationIssue {
+        enum class Severity { Warning, Error };
+
+        Severity severity = Severity::Error;
         dp::String category;
+        dp::String resource_kind;
+        dp::Optional<zoneout::UUID> resource_id;
         dp::String message;
     };
 
@@ -161,21 +166,39 @@ namespace timenav {
 
             return workspace_->coord_mode();
         }
+        // `concord::` conversions are only valid when the workspace is explicitly local and has a reference origin.
+        // Global workspaces may carry a reference, but this index treats it as metadata and does not convert through
+        // it.
         [[nodiscard]] dp::Result<dp::Geo> local_to_global(const dp::Point &local_point) const {
+            if (workspace_ == nullptr) {
+                return dp::Result<dp::Geo>::err(dp::Error::invalid_argument("local_to_global requires a workspace"));
+            }
+            if (workspace_->coord_mode() != zoneout::CoordMode::Local) {
+                return dp::Result<dp::Geo>::err(
+                    dp::Error::invalid_argument("local_to_global requires local coord_mode and a reference origin"));
+            }
             const auto reference = ref();
             if (!reference.has_value()) {
                 return dp::Result<dp::Geo>::err(
-                    dp::Error::invalid_argument("local_to_global requires workspace reference origin"));
+                    dp::Error::invalid_argument("local_to_global requires local coord_mode and a reference origin"));
             }
 
             const auto wgs = concord::frame::to_wgs(concord::frame::ENU{local_point, *reference});
             return dp::Result<dp::Geo>::ok(wgs.geo());
         }
+        // The inverse conversion follows the same rule: local coord mode plus reference origin are required.
         [[nodiscard]] dp::Result<dp::Point> global_to_local(const dp::Geo &global_point) const {
+            if (workspace_ == nullptr) {
+                return dp::Result<dp::Point>::err(dp::Error::invalid_argument("global_to_local requires a workspace"));
+            }
+            if (workspace_->coord_mode() != zoneout::CoordMode::Local) {
+                return dp::Result<dp::Point>::err(
+                    dp::Error::invalid_argument("global_to_local requires local coord_mode and a reference origin"));
+            }
             const auto reference = ref();
             if (!reference.has_value()) {
                 return dp::Result<dp::Point>::err(
-                    dp::Error::invalid_argument("global_to_local requires workspace reference origin"));
+                    dp::Error::invalid_argument("global_to_local requires local coord_mode and a reference origin"));
             }
 
             const auto enu = concord::frame::to_enu(*reference, concord::earth::WGS{global_point});
@@ -215,22 +238,37 @@ namespace timenav {
             }
 
             if (workspace_->coord_mode() == zoneout::CoordMode::Local && !workspace_->has_ref()) {
-                issues.push_back(
-                    ValidationIssue{dp::String{"invalid_reference"},
-                                    dp::String{"workspace uses local coordinates without a reference origin"}});
+                issues.push_back(ValidationIssue{
+                    ValidationIssue::Severity::Error, dp::String{"invalid_reference"}, dp::String{"workspace"},
+                    dp::nullopt, dp::String{"workspace uses local coordinates without a reference origin"}});
+            }
+            if (workspace_->coord_mode() == zoneout::CoordMode::Global && workspace_->has_ref()) {
+                issues.push_back(ValidationIssue{ValidationIssue::Severity::Warning, dp::String{"ignored_reference"},
+                                                 dp::String{"workspace"}, dp::nullopt,
+                                                 dp::String{"workspace reference origin is set but coord_mode is "
+                                                            "global; concord conversions are disabled"}});
             }
 
             for (const auto &[zone_id, zone_data] : zones_) {
                 if (zone_id.isNull()) {
-                    issues.push_back(
-                        ValidationIssue{dp::String{"missing_id"}, dp::String{"zone is missing a non-null id"}});
+                    issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"missing_id"},
+                                                     dp::String{"zone"}, dp::nullopt,
+                                                     dp::String{"zone is missing a non-null id"}});
                 }
 
                 for (const auto &node_id : zone_data->node_ids()) {
                     if (node(node_id) == nullptr) {
                         issues.push_back(ValidationIssue{
-                            dp::String{"broken_membership"},
-                            dp::String{"zone references node id that is not present in the workspace graph"}});
+                            ValidationIssue::Severity::Error, dp::String{"broken_membership"}, dp::String{"zone"},
+                            zone_id, dp::String{"zone references node id that is not present in the workspace graph"}});
+                        continue;
+                    }
+                    const auto *node_data = node(node_id);
+                    if (node_data != nullptr && std::find(node_data->zone_ids.begin(), node_data->zone_ids.end(),
+                                                          zone_id) == node_data->zone_ids.end()) {
+                        issues.push_back(ValidationIssue{
+                            ValidationIssue::Severity::Error, dp::String{"inconsistent_membership"}, dp::String{"zone"},
+                            zone_id, dp::String{"zone lists node membership but the node does not list the zone"}});
                     }
                 }
             }
@@ -238,15 +276,16 @@ namespace timenav {
             for (const auto &[node_id, vertex_id] : nodes_) {
                 const auto &node_data = workspace_->graph()[vertex_id];
                 if (node_id.isNull()) {
-                    issues.push_back(
-                        ValidationIssue{dp::String{"missing_id"}, dp::String{"node is missing a non-null id"}});
+                    issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"missing_id"},
+                                                     dp::String{"node"}, dp::nullopt,
+                                                     dp::String{"node is missing a non-null id"}});
                 }
 
                 for (const auto &zone_id : node_data.zone_ids) {
                     if (zone(zone_id) == nullptr) {
                         issues.push_back(ValidationIssue{
-                            dp::String{"broken_membership"},
-                            dp::String{"node references zone id that is not present in the workspace tree"}});
+                            ValidationIssue::Severity::Error, dp::String{"broken_membership"}, dp::String{"node"},
+                            node_id, dp::String{"node references zone id that is not present in the workspace tree"}});
                     }
                 }
             }
@@ -254,15 +293,32 @@ namespace timenav {
             for (const auto &[edge_uuid, edge_id] : edges_) {
                 const auto &edge_data = workspace_->graph().edge_property(edge_id);
                 if (edge_uuid.isNull()) {
-                    issues.push_back(
-                        ValidationIssue{dp::String{"missing_id"}, dp::String{"edge is missing a non-null id"}});
+                    issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"missing_id"},
+                                                     dp::String{"edge"}, dp::nullopt,
+                                                     dp::String{"edge is missing a non-null id"}});
                 }
 
+                const auto source_vertex = workspace_->graph().source(edge_id);
+                const auto target_vertex = workspace_->graph().target(edge_id);
+                const auto &source_node = workspace_->graph()[source_vertex];
+                const auto &target_node = workspace_->graph()[target_vertex];
                 for (const auto &zone_id : edge_data.zone_ids) {
                     if (zone(zone_id) == nullptr) {
                         issues.push_back(ValidationIssue{
-                            dp::String{"broken_membership"},
+                            ValidationIssue::Severity::Error, dp::String{"broken_membership"}, dp::String{"edge"},
+                            edge_uuid,
                             dp::String{"edge references zone id that is not present in the workspace tree"}});
+                        continue;
+                    }
+                    const bool source_has_zone = std::find(source_node.zone_ids.begin(), source_node.zone_ids.end(),
+                                                           zone_id) != source_node.zone_ids.end();
+                    const bool target_has_zone = std::find(target_node.zone_ids.begin(), target_node.zone_ids.end(),
+                                                           zone_id) != target_node.zone_ids.end();
+                    if (!source_has_zone && !target_has_zone) {
+                        issues.push_back(ValidationIssue{
+                            ValidationIssue::Severity::Warning, dp::String{"inconsistent_membership"},
+                            dp::String{"edge"}, edge_uuid,
+                            dp::String{"edge lists a zone that is not present on either endpoint node"}});
                     }
                 }
             }
