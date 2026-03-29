@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 
@@ -71,11 +73,27 @@ namespace timenav {
 
     namespace detail {
 
+        inline std::string trim_copy(const std::string &value) {
+            const auto first =
+                std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch); });
+            const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
+                                  return std::isspace(ch);
+                              }).base();
+            return first >= last ? std::string{} : std::string(first, last);
+        }
+
+        inline std::string lower_copy(std::string value) {
+            std::transform(value.begin(), value.end(), value.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            return value;
+        }
+
         inline dp::Optional<bool> parse_bool_relaxed(const std::string &value) {
-            if (value == "true" || value == "1" || value == "yes" || value == "on") {
+            const auto normalized = lower_copy(trim_copy(value));
+            if (normalized == "true" || normalized == "1" || normalized == "yes" || normalized == "on") {
                 return true;
             }
-            if (value == "false" || value == "0" || value == "no" || value == "off") {
+            if (normalized == "false" || normalized == "0" || normalized == "no" || normalized == "off") {
                 return false;
             }
             return dp::nullopt;
@@ -83,7 +101,7 @@ namespace timenav {
 
         inline dp::Optional<dp::u64> parse_u64_relaxed(const std::string &value) {
             try {
-                const auto parsed = std::stoull(value);
+                const auto parsed = std::stoull(trim_copy(value));
                 return static_cast<dp::u64>(parsed);
             } catch (...) {
                 return dp::nullopt;
@@ -92,7 +110,7 @@ namespace timenav {
 
         inline dp::Optional<dp::f64> parse_f64_relaxed(const std::string &value) {
             try {
-                return static_cast<dp::f64>(std::stod(value));
+                return static_cast<dp::f64>(std::stod(trim_copy(value)));
             } catch (...) {
                 return dp::nullopt;
             }
@@ -158,10 +176,11 @@ namespace timenav {
     }
 
     inline dp::Result<dp::String> parse_traffic_string(std::string_view value) {
-        if (value.empty()) {
+        const auto normalized = detail::trim_copy(std::string(value));
+        if (normalized.empty()) {
             return dp::Result<dp::String>::err(dp::Error::parse_error("traffic string value must not be empty"));
         }
-        return dp::Result<dp::String>::ok(dp::String{value.data()});
+        return dp::Result<dp::String>::ok(dp::String{normalized});
     }
 
     /**

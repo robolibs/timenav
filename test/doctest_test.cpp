@@ -1305,6 +1305,15 @@ TEST_CASE("traffic parsing utilities parse booleans numbers and strings") {
     CHECK(timenav::parse_traffic_u64("forty-two").is_err());
     CHECK(timenav::parse_traffic_f64("fast").is_err());
     CHECK(timenav::parse_traffic_string("").is_err());
+
+    REQUIRE(timenav::parse_traffic_bool(" YES ").is_ok());
+    CHECK(timenav::parse_traffic_bool(" YES ").value());
+    REQUIRE(timenav::parse_traffic_u64(" 42 ").is_ok());
+    CHECK(timenav::parse_traffic_u64(" 42 ").value() == 42);
+    REQUIRE(timenav::parse_traffic_f64(" 2.75 ").is_ok());
+    CHECK(timenav::parse_traffic_f64(" 2.75 ").value() == doctest::Approx(2.75));
+    REQUIRE(timenav::parse_traffic_string(" corridor ").is_ok());
+    CHECK(timenav::parse_traffic_string(" corridor ").value() == "corridor");
 }
 
 TEST_CASE("traffic property validation reports malformed values") {
