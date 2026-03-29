@@ -146,6 +146,21 @@ TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     CHECK(adapter.neighbors(zoneout::UUID("12121212-1212-4121-8121-121212121212")).empty());
 }
 
+TEST_CASE("shortest path search finds a basic route without traffic constraints") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto search = timenav::shortest_path_search(index, fixture.node_a_id, fixture.node_c_id);
+
+    CHECK(search.found);
+    CHECK(search.distance == doctest::Approx(2.0));
+    REQUIRE(search.distances.contains(fixture.node_b_id));
+    REQUIRE(search.predecessors.contains(fixture.node_b_id));
+    CHECK(search.predecessors.at(fixture.node_b_id) == fixture.node_a_id);
+    REQUIRE(search.predecessors.contains(fixture.node_c_id));
+    CHECK(search.predecessors.at(fixture.node_c_id) == fixture.node_b_id);
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 
