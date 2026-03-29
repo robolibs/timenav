@@ -440,6 +440,58 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     CHECK(state.errors[0] == "pending_claims");
 }
 
+TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState robot_state{};
+    robot_state.robot_id = timenav::RobotId{88};
+    robot_state.route_plan = route_plan.value();
+    robot_state.current_node_id = fixture.node_b_id;
+    robot_state.current_edge_id = fixture.edge_bc_id;
+
+    const timenav::vda::Adapter adapter{};
+    const auto order = adapter.order_from_route(route_plan.value());
+    const auto state = adapter.state_from_robot(robot_state);
+
+    timenav::vda::Connection connection{};
+    connection.manufacturer = "robolibs";
+    connection.serial_number = "tn-001";
+
+    timenav::vda::InstantAction instant_action{};
+    instant_action.action_id = "stop";
+    instant_action.action_type = "stopPause";
+
+    timenav::vda::Factsheet factsheet{};
+    factsheet.manufacturer = "robolibs";
+    factsheet.serial_number = "tn-001";
+    factsheet.supported_actions.push_back("stopPause");
+
+    timenav::vda::Response response{};
+    response.action_id = "stop";
+    response.accepted = true;
+    response.description = "accepted";
+
+    CHECK(connection.version == "3.0.0");
+    CHECK(factsheet.protocol_version == "3.0.0");
+    CHECK(order.nodes.size() == 3);
+    CHECK(order.edges.size() == 2);
+    CHECK(state.agv_id == "88");
+    REQUIRE(state.last_node_id.has_value());
+    REQUIRE(state.last_edge_id.has_value());
+    CHECK(state.last_node_id.value() == fixture.node_b_id.toString());
+    CHECK(state.last_edge_id.value() == fixture.edge_bc_id.toString());
+    CHECK(instant_action.action_type == "stopPause");
+    REQUIRE(response.description.has_value());
+    CHECK(response.description.value() == "accepted");
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
