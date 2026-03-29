@@ -25,8 +25,28 @@ namespace timenav {
             active_leases_.clear();
         }
 
-        void add_request(const ClaimRequest &request) { active_requests_.push_back(request); }
+        void add_request(const ClaimRequest &request) { upsert_request(request); }
         void add_lease(const Lease &lease) { active_leases_.push_back(lease); }
+        void upsert_request(const ClaimRequest &request) {
+            for (auto &active_request : active_requests_) {
+                if (active_request.id == request.id) {
+                    active_request = request;
+                    return;
+                }
+            }
+
+            active_requests_.push_back(request);
+        }
+        [[nodiscard]] bool remove_request(ClaimId id) {
+            for (auto it = active_requests_.begin(); it != active_requests_.end(); ++it) {
+                if (it->id == id) {
+                    active_requests_.erase(it);
+                    return true;
+                }
+            }
+
+            return false;
+        }
         [[nodiscard]] bool release_lease(LeaseId id) {
             for (auto it = active_leases_.begin(); it != active_leases_.end(); ++it) {
                 if (it->id == id) {

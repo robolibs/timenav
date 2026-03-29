@@ -794,6 +794,30 @@ TEST_CASE("claim manager stores active claim requests") {
     CHECK(manager.find_request(timenav::ClaimId{99}) == nullptr);
 }
 
+TEST_CASE("claim manager upserts and removes active requests by id") {
+    timenav::ClaimManager manager{};
+
+    timenav::ClaimRequest request{};
+    request.id = timenav::ClaimId{411};
+    request.robot_id = timenav::RobotId{7};
+    request.priority = 2;
+    manager.add_request(request);
+
+    timenav::ClaimRequest updated = request;
+    updated.priority = 9;
+    updated.requested_at_tick = 33;
+    manager.upsert_request(updated);
+
+    CHECK(manager.request_count() == 1);
+    REQUIRE(manager.find_request(timenav::ClaimId{411}) != nullptr);
+    CHECK(manager.find_request(timenav::ClaimId{411})->priority == 9);
+    REQUIRE(manager.find_request(timenav::ClaimId{411})->requested_at_tick.has_value());
+    CHECK(manager.find_request(timenav::ClaimId{411})->requested_at_tick.value() == 33);
+    CHECK(manager.remove_request(timenav::ClaimId{411}));
+    CHECK_FALSE(manager.remove_request(timenav::ClaimId{411}));
+    CHECK(manager.request_count() == 0);
+}
+
 TEST_CASE("claim manager stores granted leases") {
     timenav::ClaimManager manager{};
 
