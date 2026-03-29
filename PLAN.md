@@ -1267,7 +1267,7 @@ Still missing / still weak:
 - [x] Slice 2.6: expose workspace `coord_mode` through the index
 - [x] Slice 2.7: add `concord::`-based helpers for local/global conversions inside the indexing layer
 - [x] Slice 2.8: add property-read helpers for zones and edges
-- [ ] Slice 2.9: add validation helpers for missing ids / broken memberships / invalid references
+- [x] Slice 2.9: add validation helpers for missing ids / broken memberships / invalid references
 - [ ] Slice 2.10: add tests for memberships, hierarchy traversal, and local/global coordinate access
 
 ### Milestone 3: Zone Policy And Property Parsing
