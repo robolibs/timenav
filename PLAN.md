@@ -1390,7 +1390,7 @@ Still missing / still weak:
 - [x] Slice 7.4: add `vda/instant_actions.hpp`
 - [x] Slice 7.5: add `vda/factsheet.hpp`
 - [x] Slice 7.6: add `vda/responses.hpp`
-- [ ] Slice 7.7: add `vda/adapter.hpp`
+- [x] Slice 7.7: add `vda/adapter.hpp`
 - [ ] Slice 7.8: map internal route plans to VDA order-compatible objects
 - [ ] Slice 7.9: map internal runtime/claim state to VDA state-compatible objects
 - [ ] Slice 7.10: add tests for VDA `3.0.0` compatibility mappings

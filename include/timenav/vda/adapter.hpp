@@ -2,9 +2,14 @@
 
 #include <string>
 
+#include "timenav/claim_manager.hpp"
 #include "timenav/robot_state.hpp"
 #include "timenav/route.hpp"
+#include "timenav/vda/connection.hpp"
+#include "timenav/vda/factsheet.hpp"
+#include "timenav/vda/instant_actions.hpp"
 #include "timenav/vda/order.hpp"
+#include "timenav/vda/responses.hpp"
 #include "timenav/vda/state.hpp"
 
 namespace timenav::vda {
@@ -44,6 +49,10 @@ namespace timenav::vda {
 
         [[nodiscard]] Order order_from_route(const RoutePlan &route_plan) const;
         [[nodiscard]] State state_from_robot(const RobotState &robot_state) const;
+        [[nodiscard]] Connection connection_from_factsheet(const Factsheet &factsheet) const;
+        [[nodiscard]] Response response_for_action(const InstantAction &action, ActionStatus status,
+                                                   dp::Optional<dp::String> description = dp::nullopt,
+                                                   dp::Optional<dp::String> result_code = dp::nullopt) const;
     };
 
     inline Order Adapter::order_from_route(const RoutePlan &route_plan) const { return map_route_plan(route_plan); }
@@ -71,5 +80,25 @@ namespace timenav::vda {
     }
 
     inline State Adapter::state_from_robot(const RobotState &robot_state) const { return map_robot_state(robot_state); }
+
+    inline Connection Adapter::connection_from_factsheet(const Factsheet &factsheet) const {
+        Connection connection{};
+        connection.manufacturer = factsheet.manufacturer;
+        connection.serial_number = factsheet.serial_number;
+        connection.version = factsheet.protocol_version;
+        connection.status = ConnectionStatus::Online;
+        return connection;
+    }
+
+    inline Response Adapter::response_for_action(const InstantAction &action, ActionStatus status,
+                                                 dp::Optional<dp::String> description,
+                                                 dp::Optional<dp::String> result_code) const {
+        Response response{};
+        response.action_id = action.action_id;
+        response.status = status;
+        response.description = description;
+        response.result_code = result_code;
+        return response;
+    }
 
 } // namespace timenav::vda

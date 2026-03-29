@@ -496,6 +496,30 @@ TEST_CASE("vda adapter scaffold is default constructible") {
     CHECK(true);
 }
 
+TEST_CASE("vda adapter scaffold maps connection and action responses") {
+    const timenav::vda::Adapter adapter{};
+
+    timenav::vda::Factsheet factsheet{};
+    factsheet.manufacturer = "robolibs";
+    factsheet.serial_number = "tn-002";
+
+    timenav::vda::InstantAction action{};
+    action.action_id = "resume";
+    action.action_type = "startPause";
+
+    const auto connection = adapter.connection_from_factsheet(factsheet);
+    const auto response =
+        adapter.response_for_action(action, timenav::vda::ActionStatus::Accepted, dp::String{"accepted"});
+
+    CHECK(connection.manufacturer == "robolibs");
+    CHECK(connection.serial_number == "tn-002");
+    CHECK(connection.status == timenav::vda::ConnectionStatus::Online);
+    CHECK(response.action_id == "resume");
+    CHECK(response.status == timenav::vda::ActionStatus::Accepted);
+    REQUIRE(response.description.has_value());
+    CHECK(response.description.value() == "accepted");
+}
+
 TEST_CASE("vda adapter maps route plans to order-compatible objects") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
