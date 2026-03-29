@@ -294,6 +294,32 @@ So:
 
 That split is clean.
 
+### Still Missing Overall
+
+Even with the current partial implementation, `timenav` still does **not** yet have everything needed.
+
+At a high level, the remaining work is:
+
+- a real scheduling model instead of only light schedule-window checks
+- fixes for currently incorrect claim/coordinator behavior
+  - bounded shared-capacity enforcement is not implemented correctly
+  - rolling-horizon zone claiming/release can target the wrong zones
+  - robot unregister/reset does not fully clean claim state
+- deeper traffic-rule semantics
+  - priorities
+  - right-of-way
+  - queueing
+  - reservation windows
+- stronger claim/lease behavior tied to actual traffic policy
+- stronger planner behavior tied to lane and zone semantics
+- safer public-input validation around route and adapter entry points
+- more complete `VDA5050 3.0.0` compatibility depth
+- broader and harsher tests
+- stricter `dp::` consistency across internals
+
+These are not optional polish items.
+They are part of the intended product.
+
 ---
 
 ## Proposed Architecture
@@ -1034,7 +1060,6 @@ include/timenav/
   workspace_index.hpp
   zone_policy.hpp
   route.hpp
-  planner.hpp
   claim.hpp
   claim_manager.hpp
   coordinator.hpp
@@ -1053,12 +1078,8 @@ Suggested tests:
 
 ```text
 test/
-  test_workspace_index.cpp
-  test_zone_policy.cpp
-  test_planner.cpp
-  test_claim_manager.cpp
-  test_coordinator.cpp
-  test_vda_adapter.cpp
+  doctest_test.cpp
+  examples/ or additional test files may be split later if the suite becomes too large
 ```
 
 ---
@@ -1407,7 +1428,7 @@ Do this in order:
 2. `workspace_index.hpp`
 3. `zone_policy.hpp`
 4. `route.hpp`
-5. `planner.hpp`
+5. route-planning internals inside `route.hpp`
 6. `claim.hpp`
 7. `claim_manager.hpp`
 8. `coordinator.hpp`
@@ -1482,6 +1503,74 @@ Recommendation:
 
 ---
 
+## Remaining Work Checklist
+
+This section summarizes the major unfinished work that must still happen before `timenav` matches the intended design.
+
+### Scheduling
+
+- [ ] define an actual scheduling model, not only a route/window filter
+- [ ] define reservation windows over time for zones and edges
+- [ ] define queueing rules for waiting robots
+- [ ] define what happens when a robot misses its expected time slot
+- [ ] define how schedule conflict resolution interacts with replanning
+
+### Traffic Rules
+
+- [ ] define right-of-way rules beyond simple priority comparison
+- [x] fix bounded-capacity enforcement for shared zone and edge claims
+- [ ] define waiting/no-stop behavior on lanes and zones
+- [ ] define corridor semantics clearly
+- [ ] define how blocked/restricted/slow policies affect planning vs claiming
+
+### Claim / Lease Semantics
+
+- [ ] define claim target semantics precisely for zones, edges, and nodes
+- [x] define richer denial reasons and operator/debug visibility
+- [ ] define lease refresh / extension behavior
+- [ ] define revoke behavior and required downstream reactions
+- [ ] fix rolling-horizon release/claim behavior to use per-step zone coverage instead of de-duplicated route zones
+- [ ] clean requests and leases correctly on robot unregister/reset
+
+### Planner Depth
+
+- [ ] ensure planner honors `directed` semantics exactly
+- [ ] incorporate edge property semantics more completely into costing
+- [ ] incorporate zone property semantics more completely into costing
+- [ ] propagate penalized search costs into returned `RoutePlan` totals and timings
+- [ ] improve blocked-vs-unreachable diagnostics
+- [ ] add richer workspace fixtures to validate planner behavior
+
+### `dp::` And Type Discipline
+
+- [ ] reduce remaining casual `std::` usage where `dp::` equivalents should be used
+- [ ] standardize string/container/value conventions across all headers
+- [ ] verify result/error surfaces use the intended library conventions consistently
+- [ ] define refresh / mutation semantics for borrowed `WorkspaceIndex` inputs
+
+### VDA5050 `3.0.0` Compatibility
+
+- [ ] deepen `order` compatibility with real `3.0.0` expectations
+- [ ] deepen `state` compatibility with real `3.0.0` expectations
+- [ ] incorporate zone/edge request concepts more faithfully
+- [ ] make compatibility mapping broader without letting it become the core model
+- [ ] validate malformed public `RoutePlan` input before mapping to VDA types
+- [ ] narrow or restate compatibility claims unless protocol coverage is materially deeper
+
+### Testing
+
+- [ ] add dedicated tests per major header/module
+- [ ] add malformed property and malformed workspace tests
+- [ ] add multi-robot conflict tests
+- [ ] add scheduler/priority/right-of-way tests
+- [ ] add compatibility-layer tests against representative VDA `3.0.0` scenarios
+- [ ] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
+- [ ] add tests for repeated-zone routes and zone re-entry during progress updates
+- [x] add tests for bounded-capacity saturation beyond two robots
+- [ ] add tests for unregister/reset cleanup and stale borrowed-index behavior
+
+---
+
 ## Non-Goals For First Version
 
 Do not try to solve all of this in `0.0.1`:
@@ -1504,11 +1593,12 @@ First version should prove:
 
 ## Concrete Next Step
 
-First actual implementation pass should create:
+The next corrective pass should focus on production blockers, in this order:
 
-- `include/timenav/ids.hpp`
-- `include/timenav/workspace_index.hpp`
-- `include/timenav/zone_policy.hpp`
-- `test/test_workspace_index.cpp`
+- fix bounded shared-capacity enforcement in `claim_manager.hpp`
+- fix rolling-horizon zone claim/release bookkeeping in `coordinator.hpp`
+- clean claim state on robot unregister/reset
+- validate `RoutePlan` invariants before VDA mapping and claim derivation
+- add targeted regression tests in `test/doctest_test.cpp`
 
-That is the correct starting point.
+That is the correct next step from the current codebase state.

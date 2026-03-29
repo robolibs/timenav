@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <string>
 
 #include "timenav/claim.hpp"
 #include "timenav/workspace_index.hpp"
@@ -51,6 +52,20 @@ namespace timenav {
 
             return false;
         }
+        [[nodiscard]] dp::u64 remove_requests_for_robot(RobotId robot_id) {
+            dp::u64 removed = 0;
+            auto it = active_requests_.begin();
+            while (it != active_requests_.end()) {
+                if (it->robot_id != robot_id) {
+                    ++it;
+                    continue;
+                }
+                it = active_requests_.erase(it);
+                ++removed;
+            }
+
+            return removed;
+        }
         void upsert_lease(const Lease &lease) {
             for (auto &active_lease : active_leases_) {
                 if (active_lease.id == lease.id) {
@@ -70,6 +85,26 @@ namespace timenav {
             }
 
             return false;
+        }
+        [[nodiscard]] dp::u64 release_leases_for_robot(RobotId robot_id,
+                                                       dp::Optional<dp::u64> released_at_tick = dp::nullopt) {
+            dp::u64 released = 0;
+            auto it = active_leases_.begin();
+            while (it != active_leases_.end()) {
+                if (it->robot_id != robot_id) {
+                    ++it;
+                    continue;
+                }
+
+                Lease archived = *it;
+                archived.active = false;
+                archived.released_at_tick = released_at_tick;
+                released_leases_.push_back(archived);
+                it = active_leases_.erase(it);
+                ++released;
+            }
+
+            return released;
         }
         [[nodiscard]] bool release_lease(LeaseId id, dp::Optional<dp::u64> released_at_tick = dp::nullopt) {
             for (auto it = active_leases_.begin(); it != active_leases_.end(); ++it) {
@@ -186,7 +221,9 @@ namespace timenav {
                                        dp::String{"claim request does not contain any targets"},
                                        dp::nullopt,
                                        dp::nullopt,
-                                       {}};
+                                       {},
+                                       dp::nullopt,
+                                       {dp::String{"request has no claim targets"}}};
             }
 
             if (const auto invalid_target = first_invalid_target(request); invalid_target.has_value()) {
@@ -194,7 +231,9 @@ namespace timenav {
                                        dp::String{"claim request references a missing workspace resource"},
                                        dp::nullopt,
                                        dp::nullopt,
-                                       {invalid_target.value()}};
+                                       {invalid_target.value()},
+                                       invalid_target,
+                                       {dp::String{"request target does not exist in current workspace index"}}};
             }
 
             for (const auto &active_request : active_requests_) {
@@ -203,9 +242,15 @@ namespace timenav {
                 }
 
                 if (!claims_compatible_for_current_index(request, active_request)) {
-                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with active request"},
-                                           active_request.id, dp::nullopt,
-                                           conflicting_targets(request, active_request)};
+                    const auto conflicts = conflicting_targets(request, active_request);
+                    return ClaimEvaluation{ClaimDecision::Deny,
+                                           describe_conflict_reason(dp::String{"active request"}, conflicts),
+                                           active_request.id,
+                                           dp::nullopt,
+                                           conflicts,
+                                           conflicts.empty() ? dp::nullopt
+                                                             : dp::Optional<ClaimTarget>{conflicts.front()},
+                                           build_conflict_diagnostics(dp::String{"active request"}, conflicts)};
                 }
             }
 
@@ -215,19 +260,191 @@ namespace timenav {
                 }
 
                 if (!claims_compatible_for_current_index(request, active_lease)) {
-                    return ClaimEvaluation{ClaimDecision::Deny, dp::String{"conflicts with granted lease"}, dp::nullopt,
-                                           active_lease.id, conflicting_targets(request, active_lease)};
+                    const auto conflicts = conflicting_targets(request, active_lease);
+                    return ClaimEvaluation{ClaimDecision::Deny,
+                                           describe_conflict_reason(dp::String{"granted lease"}, conflicts),
+                                           dp::nullopt,
+                                           active_lease.id,
+                                           conflicts,
+                                           conflicts.empty() ? dp::nullopt
+                                                             : dp::Optional<ClaimTarget>{conflicts.front()},
+                                           build_conflict_diagnostics(dp::String{"granted lease"}, conflicts)};
                 }
+            }
+
+            if (const auto saturated = first_capacity_violation(request); saturated.has_value()) {
+                ClaimEvaluation evaluation{};
+                evaluation.decision = ClaimDecision::Deny;
+                evaluation.reason = saturated->reason;
+                evaluation.conflicting_claim_id = saturated->conflicting_claim_id;
+                evaluation.conflicting_lease_id = saturated->conflicting_lease_id;
+                evaluation.conflicting_targets = {saturated->target};
+                evaluation.blocking_target = saturated->target;
+                evaluation.diagnostics = saturated->diagnostics;
+                return evaluation;
+            }
+
+            if (const auto saturated = first_edge_capacity_violation(request); saturated.has_value()) {
+                ClaimEvaluation evaluation{};
+                evaluation.decision = ClaimDecision::Deny;
+                evaluation.reason = saturated->reason;
+                evaluation.conflicting_claim_id = saturated->conflicting_claim_id;
+                evaluation.conflicting_lease_id = saturated->conflicting_lease_id;
+                evaluation.conflicting_targets = {saturated->target};
+                evaluation.blocking_target = saturated->target;
+                evaluation.diagnostics = saturated->diagnostics;
+                return evaluation;
             }
 
             return ClaimEvaluation{ClaimDecision::Grant,
                                    dp::String{"claim is compatible with current state"},
                                    dp::nullopt,
                                    dp::nullopt,
-                                   {}};
+                                   {},
+                                   dp::nullopt,
+                                   {dp::String{"request passed conflict and capacity checks"}}};
         }
 
       private:
+        struct CapacityViolation {
+            ClaimTarget target;
+            dp::String reason;
+            dp::Optional<ClaimId> conflicting_claim_id;
+            dp::Optional<LeaseId> conflicting_lease_id;
+            dp::Vector<dp::String> diagnostics;
+        };
+
+        [[nodiscard]] dp::Optional<CapacityViolation> first_capacity_violation(const ClaimRequest &request) const {
+            if (index_ == nullptr || request.access_mode != ClaimAccessMode::Shared) {
+                return dp::nullopt;
+            }
+
+            for (const auto &target : request.targets) {
+                if (target.kind != ClaimTargetKind::Zone) {
+                    continue;
+                }
+
+                const auto *zone = index_->zone(target.resource_id);
+                if (zone == nullptr) {
+                    continue;
+                }
+
+                const auto policy = parse_zone_policy(zone->properties());
+                if (!policy.capacity_is_explicit || policy.capacity <= 1) {
+                    continue;
+                }
+
+                dp::u32 occupant_count = 1;
+                dp::Optional<ClaimId> blocking_claim_id;
+                dp::Optional<LeaseId> blocking_lease_id;
+
+                for (const auto &active_request : active_requests_) {
+                    if (active_request.id == request.id || active_request.access_mode != ClaimAccessMode::Shared ||
+                        !claim_windows_overlap(request.window, active_request.window) ||
+                        !request_overlaps_zone(active_request, target.resource_id)) {
+                        continue;
+                    }
+                    ++occupant_count;
+                    if (!blocking_claim_id.has_value()) {
+                        blocking_claim_id = active_request.id;
+                    }
+                }
+
+                for (const auto &active_lease : active_leases_) {
+                    if (!active_lease.active || active_lease.access_mode != ClaimAccessMode::Shared ||
+                        !claim_windows_overlap(request.window, lease_window(active_lease)) ||
+                        !lease_overlaps_zone(active_lease, target.resource_id)) {
+                        continue;
+                    }
+                    ++occupant_count;
+                    if (!blocking_lease_id.has_value()) {
+                        blocking_lease_id = active_lease.id;
+                    }
+                }
+
+                if (occupant_count > policy.capacity) {
+                    CapacityViolation violation{};
+                    violation.target = target;
+                    violation.reason = "shared zone capacity exceeded";
+                    violation.conflicting_claim_id = blocking_claim_id;
+                    violation.conflicting_lease_id = blocking_lease_id;
+                    violation.diagnostics.push_back(dp::String{"zone capacity limit reached"});
+                    violation.diagnostics.push_back(dp::String{"configured capacity="} +
+                                                    dp::String{std::to_string(policy.capacity)});
+                    violation.diagnostics.push_back(dp::String{"observed occupancy="} +
+                                                    dp::String{std::to_string(occupant_count)});
+                    return violation;
+                }
+            }
+
+            return dp::nullopt;
+        }
+        [[nodiscard]] dp::Optional<CapacityViolation> first_edge_capacity_violation(const ClaimRequest &request) const {
+            if (index_ == nullptr || request.access_mode != ClaimAccessMode::Shared) {
+                return dp::nullopt;
+            }
+
+            for (const auto &target : request.targets) {
+                if (target.kind != ClaimTargetKind::Edge) {
+                    continue;
+                }
+
+                const auto *edge = index_->edge(target.resource_id);
+                if (edge == nullptr) {
+                    continue;
+                }
+
+                const auto semantics = parse_edge_traffic_semantics(edge->properties);
+                if (!semantics.capacity_is_explicit || !semantics.capacity.has_value() ||
+                    semantics.capacity.value() <= 1) {
+                    continue;
+                }
+
+                dp::u32 occupant_count = 1;
+                dp::Optional<ClaimId> blocking_claim_id;
+                dp::Optional<LeaseId> blocking_lease_id;
+
+                for (const auto &active_request : active_requests_) {
+                    if (active_request.id == request.id || active_request.access_mode != ClaimAccessMode::Shared ||
+                        !claim_windows_overlap(request.window, active_request.window) ||
+                        !request_contains_target(active_request, target)) {
+                        continue;
+                    }
+                    ++occupant_count;
+                    if (!blocking_claim_id.has_value()) {
+                        blocking_claim_id = active_request.id;
+                    }
+                }
+
+                for (const auto &active_lease : active_leases_) {
+                    if (!active_lease.active || active_lease.access_mode != ClaimAccessMode::Shared ||
+                        !claim_windows_overlap(request.window, lease_window(active_lease)) ||
+                        !lease_contains_target(active_lease, target)) {
+                        continue;
+                    }
+                    ++occupant_count;
+                    if (!blocking_lease_id.has_value()) {
+                        blocking_lease_id = active_lease.id;
+                    }
+                }
+
+                if (occupant_count > semantics.capacity.value()) {
+                    CapacityViolation violation{};
+                    violation.target = target;
+                    violation.reason = "shared edge capacity exceeded";
+                    violation.conflicting_claim_id = blocking_claim_id;
+                    violation.conflicting_lease_id = blocking_lease_id;
+                    violation.diagnostics.push_back(dp::String{"edge capacity limit reached"});
+                    violation.diagnostics.push_back(dp::String{"configured capacity="} +
+                                                    dp::String{std::to_string(semantics.capacity.value())});
+                    violation.diagnostics.push_back(dp::String{"observed occupancy="} +
+                                                    dp::String{std::to_string(occupant_count)});
+                    return violation;
+                }
+            }
+
+            return dp::nullopt;
+        }
         [[nodiscard]] dp::Optional<ClaimTarget> first_invalid_target(const ClaimRequest &request) const noexcept {
             if (index_ == nullptr) {
                 return dp::nullopt;
@@ -260,6 +477,79 @@ namespace timenav {
             ClaimRequest lease_view{};
             lease_view.targets = lease.targets;
             return conflicting_targets(request, lease_view);
+        }
+        [[nodiscard]] static dp::String target_kind_name(ClaimTargetKind kind) {
+            switch (kind) {
+            case ClaimTargetKind::Zone:
+                return "zone";
+            case ClaimTargetKind::Node:
+                return "node";
+            case ClaimTargetKind::Edge:
+                return "edge";
+            }
+
+            return "target";
+        }
+        [[nodiscard]] static dp::String describe_conflict_reason(const dp::String &source,
+                                                                 const dp::Vector<ClaimTarget> &conflicts) {
+            if (conflicts.empty()) {
+                return dp::String{"conflicts with "} + source;
+            }
+
+            return dp::String{"conflicts with "} + source + dp::String{" on "} +
+                   target_kind_name(conflicts.front().kind) + dp::String{" target"};
+        }
+        [[nodiscard]] static dp::Vector<dp::String>
+        build_conflict_diagnostics(const dp::String &source, const dp::Vector<ClaimTarget> &conflicts) {
+            dp::Vector<dp::String> diagnostics;
+            diagnostics.push_back(dp::String{"collision detected with "} + source);
+            if (!conflicts.empty()) {
+                diagnostics.push_back(dp::String{"blocking "} + target_kind_name(conflicts.front().kind) +
+                                      dp::String{" id="} + dp::String{conflicts.front().resource_id.toString()});
+            }
+            return diagnostics;
+        }
+        [[nodiscard]] static ClaimWindow lease_window(const Lease &lease) {
+            ClaimWindow window{};
+            window.start_tick = lease.granted_at_tick;
+            window.end_tick = lease.expires_at_tick;
+            return window;
+        }
+        [[nodiscard]] static bool request_contains_target(const ClaimRequest &request, const ClaimTarget &target) {
+            for (const auto &candidate : request.targets) {
+                if (candidate.kind == target.kind && candidate.resource_id == target.resource_id) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        [[nodiscard]] static bool lease_contains_target(const Lease &lease, const ClaimTarget &target) {
+            for (const auto &candidate : lease.targets) {
+                if (candidate.kind == target.kind && candidate.resource_id == target.resource_id) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        [[nodiscard]] bool request_overlaps_zone(const ClaimRequest &request, const zoneout::UUID &zone_id) const {
+            for (const auto &target : request.targets) {
+                if (target.kind == ClaimTargetKind::Zone && zones_overlap(target.resource_id, zone_id)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        [[nodiscard]] bool lease_overlaps_zone(const Lease &lease, const zoneout::UUID &zone_id) const {
+            for (const auto &target : lease.targets) {
+                if (target.kind == ClaimTargetKind::Zone && zones_overlap(target.resource_id, zone_id)) {
+                    return true;
+                }
+            }
+
+            return false;
         }
         [[nodiscard]] bool claims_compatible_for_current_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
             if (index_ == nullptr) {

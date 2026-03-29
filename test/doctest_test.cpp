@@ -257,6 +257,8 @@ TEST_CASE("route types expose typed defaults") {
     CHECK(plan.traversed_node_ids.empty());
     CHECK(plan.traversed_edge_ids.empty());
     CHECK(plan.traversed_zone_ids.empty());
+    CHECK(plan.traversed_node_zone_ids.empty());
+    CHECK(plan.traversed_edge_zone_ids.empty());
     CHECK(plan.total_cost == doctest::Approx(0.0));
     CHECK_FALSE(search.found);
     CHECK(std::isinf(search.distance));
@@ -269,6 +271,7 @@ TEST_CASE("claim types expose typed defaults") {
     const timenav::ClaimRequest request{};
     const timenav::Lease lease{};
     const timenav::ClaimWindow window{};
+    const timenav::ClaimEvaluation evaluation{};
 
     CHECK(target.kind == timenav::ClaimTargetKind::Zone);
     CHECK(target.resource_id.isNull());
@@ -292,6 +295,8 @@ TEST_CASE("claim types expose typed defaults") {
     CHECK_FALSE(lease.expires_at_tick.has_value());
     CHECK_FALSE(lease.released_at_tick.has_value());
     CHECK(lease.active);
+    CHECK_FALSE(evaluation.blocking_target.has_value());
+    CHECK(evaluation.diagnostics.empty());
 }
 
 TEST_CASE("claim manager scaffold can be default constructed or bound to an index") {
@@ -534,9 +539,12 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
     const auto order = adapter.order_from_route(route_plan.value());
     const auto indexed_order = adapter.order_from_route(index, route_plan.value());
     const auto direct_order = timenav::vda::map_route_plan(route_plan.value());
+    const auto checked_order = timenav::vda::try_map_route_plan(route_plan.value());
 
     CHECK(order.order_id == fixture.node_c_id.toString());
     CHECK(direct_order.order_id == order.order_id);
+    REQUIRE(checked_order.is_ok());
+    CHECK(checked_order.value().order_id == order.order_id);
     REQUIRE(order.nodes.size() == 3);
     REQUIRE(order.edges.size() == 2);
     CHECK(order.nodes[0].node_id == fixture.node_a_id.toString());
@@ -579,6 +587,24 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     CHECK(state.errors[0] == "pending_claims");
     CHECK(managed_state.errors.size() == 2);
     CHECK(managed_state.action_states.size() == 2);
+}
+
+TEST_CASE("vda route mapping rejects malformed public route plans safely") {
+    timenav::RoutePlan invalid_plan{};
+    invalid_plan.start_node_id = zoneout::UUID("aaaaaaaa-0000-4000-8000-000000000001");
+    invalid_plan.goal_node_id = zoneout::UUID("aaaaaaaa-0000-4000-8000-000000000003");
+    invalid_plan.traversed_node_ids = {invalid_plan.start_node_id, invalid_plan.goal_node_id};
+    invalid_plan.traversed_edge_ids = {zoneout::UUID("bbbbbbbb-0000-4000-8000-000000000001"),
+                                       zoneout::UUID("bbbbbbbb-0000-4000-8000-000000000002")};
+
+    const auto validation = timenav::validate_route_plan_shape(invalid_plan);
+    const auto checked_order = timenav::vda::try_map_route_plan(invalid_plan);
+    const auto fallback_order = timenav::vda::map_route_plan(invalid_plan);
+
+    CHECK(validation.is_err());
+    CHECK(checked_order.is_err());
+    CHECK(fallback_order.nodes.empty());
+    CHECK(fallback_order.edges.empty());
 }
 
 TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
@@ -733,9 +759,24 @@ TEST_CASE("coordinator can unregister robots assign routes and update claim stat
     CHECK(coordinator.find_robot_state(timenav::RobotId{41})->active_lease_ids.size() == 1);
     CHECK(coordinator.find_robot_state(timenav::RobotId{41})->last_claim_tick.value() == 22);
 
+    timenav::ClaimRequest pending{};
+    pending.id = timenav::ClaimId{11};
+    pending.robot_id = timenav::RobotId{41};
+    pending.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, fixture.node_a_id});
+    coordinator.claim_manager().add_request(pending);
+
+    timenav::Lease active{};
+    active.id = timenav::LeaseId{21};
+    active.robot_id = timenav::RobotId{41};
+    active.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_ab_id});
+    coordinator.claim_manager().add_lease(active);
+
     CHECK(coordinator.unregister_robot(timenav::RobotId{41}));
     CHECK_FALSE(coordinator.unregister_robot(timenav::RobotId{41}));
     CHECK(coordinator.find_robot_state(timenav::RobotId{41}) == nullptr);
+    CHECK_FALSE(coordinator.claim_manager().has_request(timenav::ClaimId{11}));
+    CHECK_FALSE(coordinator.claim_manager().has_lease(timenav::LeaseId{21}));
+    CHECK(coordinator.claim_manager().find_released_lease(timenav::LeaseId{21}) != nullptr);
 }
 
 TEST_CASE("route to claim helpers derive ordered claim targets and requests") {
@@ -805,7 +846,7 @@ TEST_CASE("coordinator derives rolling horizon claim requests from registered ro
     coordinator.register_robot(state);
 
     const auto request = coordinator.claim_request_for_robot(timenav::RobotId{31}, timenav::ClaimId{121});
-    const auto expected_zone_targets = std::min<dp::u64>(route_plan.value().traversed_zone_ids.size() - 1, state.horizon + 1);
+    const auto expected_zone_targets = timenav::route_zone_targets_from_progress(route_plan.value(), 1, state.horizon).size();
     const auto expected_edge_targets = std::min<dp::u64>(route_plan.value().traversed_edge_ids.size() - 1, state.horizon);
     const auto expected_node_targets = std::min<dp::u64>(route_plan.value().traversed_node_ids.size() - 1, state.horizon + 1);
 
@@ -896,6 +937,61 @@ TEST_CASE("coordinator releases leases behind current progress") {
     CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{201}) == nullptr);
     CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{202}) != nullptr);
     CHECK(coordinator.claim_manager().find_released_lease(timenav::LeaseId{201}) != nullptr);
+}
+
+TEST_CASE("coordinator rolling claims and releases use per-step zone coverage") {
+    timenav::RoutePlan route_plan{};
+    const auto node_a = zoneout::UUID("10000000-0000-4000-8000-000000000001");
+    const auto node_b = zoneout::UUID("10000000-0000-4000-8000-000000000002");
+    const auto node_c = zoneout::UUID("10000000-0000-4000-8000-000000000003");
+    const auto edge_ab = zoneout::UUID("20000000-0000-4000-8000-000000000001");
+    const auto edge_bc = zoneout::UUID("20000000-0000-4000-8000-000000000002");
+    const auto zone_delta = zoneout::UUID("30000000-0000-4000-8000-000000000000");
+    const auto zone_alpha = zoneout::UUID("30000000-0000-4000-8000-000000000001");
+    const auto zone_beta = zoneout::UUID("30000000-0000-4000-8000-000000000002");
+    const auto zone_gamma = zoneout::UUID("30000000-0000-4000-8000-000000000003");
+
+    route_plan.start_node_id = node_a;
+    route_plan.goal_node_id = node_c;
+    route_plan.traversed_node_ids = {node_a, node_b, node_c};
+    route_plan.traversed_edge_ids = {edge_ab, edge_bc};
+    route_plan.traversed_zone_ids = {zone_delta, zone_beta, zone_alpha, zone_gamma};
+    route_plan.traversed_node_zone_ids = {{zone_delta}, {zone_beta}, {zone_alpha, zone_gamma}};
+    route_plan.traversed_edge_zone_ids = {{zone_delta}, {zone_alpha, zone_gamma}};
+    route_plan.steps = {{node_a, dp::nullopt, 0.0, 0.0},
+                        {node_b, edge_ab, 1.0, 1.0},
+                        {node_c, edge_bc, 1.0, 2.0}};
+    route_plan.total_cost = 2.0;
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{500};
+    state.route_plan = route_plan;
+    state.current_node_id = node_b;
+    state.horizon = 1;
+    state.updated_at_tick = 10;
+    state.progress_state = timenav::RobotProgressState::FollowingRoute;
+    state.active_lease_ids = {timenav::LeaseId{9001}, timenav::LeaseId{9002}};
+
+    timenav::ClaimManager claim_manager{};
+    timenav::Lease behind{};
+    behind.id = timenav::LeaseId{9001};
+    behind.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zone_delta});
+    claim_manager.add_lease(behind);
+
+    timenav::Lease ahead{};
+    ahead.id = timenav::LeaseId{9002};
+    ahead.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zone_gamma});
+    claim_manager.add_lease(ahead);
+
+    const auto request = timenav::rolling_horizon_claim_request(timenav::ClaimId{700}, state);
+    CHECK(request.targets[0].kind == timenav::ClaimTargetKind::Zone);
+    CHECK(request.targets[0].resource_id == zone_beta);
+    CHECK(request.targets[1].resource_id == zone_alpha);
+    CHECK(request.targets[2].resource_id == zone_gamma);
+
+    CHECK(timenav::release_targets_behind_progress(state, claim_manager) == 1);
+    CHECK_FALSE(claim_manager.has_lease(timenav::LeaseId{9001}));
+    CHECK(claim_manager.has_lease(timenav::LeaseId{9002}));
 }
 
 TEST_CASE("schedule window helpers detect route zone conflicts") {
@@ -1198,6 +1294,59 @@ TEST_CASE("zone claim evaluation respects zone hierarchy windows and capacity") 
     CHECK(later_parent_eval.decision == timenav::ClaimDecision::Grant);
 }
 
+TEST_CASE("shared claim evaluation enforces bounded zone and edge capacity beyond two robots") {
+    auto fixture = make_test_workspace();
+    auto &child_a = fixture.workspace.root_zone().children()[0];
+    child_a.set_property("traffic.max_occupancy", "2");
+    const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+    REQUIRE(edge_ab.has_value());
+    fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.capacity"] = "2";
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager manager{index};
+
+    timenav::ClaimRequest zone_one{};
+    zone_one.id = timenav::ClaimId{1701};
+    zone_one.access_mode = timenav::ClaimAccessMode::Shared;
+    zone_one.window.start_tick = 0;
+    zone_one.window.end_tick = 10;
+    zone_one.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, child_a.id()});
+    manager.add_request(zone_one);
+
+    timenav::ClaimRequest zone_two = zone_one;
+    zone_two.id = timenav::ClaimId{1702};
+    manager.add_request(zone_two);
+
+    timenav::ClaimRequest zone_three = zone_one;
+    zone_three.id = timenav::ClaimId{1703};
+
+    const auto zone_eval = manager.evaluate_request(zone_three);
+    CHECK(zone_eval.decision == timenav::ClaimDecision::Deny);
+    CHECK(zone_eval.reason.find("capacity") != dp::String::npos);
+    REQUIRE(zone_eval.blocking_target.has_value());
+    CHECK(zone_eval.blocking_target->resource_id == child_a.id());
+
+    timenav::ClaimManager edge_manager{index};
+    timenav::ClaimRequest edge_one{};
+    edge_one.id = timenav::ClaimId{1711};
+    edge_one.access_mode = timenav::ClaimAccessMode::Shared;
+    edge_one.window.start_tick = 0;
+    edge_one.window.end_tick = 10;
+    edge_one.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_ab_id});
+    edge_manager.add_request(edge_one);
+
+    timenav::ClaimRequest edge_two = edge_one;
+    edge_two.id = timenav::ClaimId{1712};
+    edge_manager.add_request(edge_two);
+
+    timenav::ClaimRequest edge_three = edge_one;
+    edge_three.id = timenav::ClaimId{1713};
+
+    const auto edge_eval = edge_manager.evaluate_request(edge_three);
+    CHECK(edge_eval.decision == timenav::ClaimDecision::Deny);
+    CHECK(edge_eval.reason.find("edge capacity") != dp::String::npos);
+}
+
 TEST_CASE("edge and node claim compatibility detect overlapping exclusive targets") {
     const auto shared_node = zoneout::UUID("50505050-5050-4050-8050-505050505050");
     const auto shared_edge = zoneout::UUID("60606060-6060-4060-8060-606060606060");
@@ -1305,10 +1454,14 @@ TEST_CASE("claim manager evaluates requests against active requests and leases")
     const auto grant = manager.evaluate_request(granted);
 
     CHECK(request_conflict.decision == timenav::ClaimDecision::Deny);
+    CHECK(request_conflict.reason.find("zone target") != dp::String::npos);
     REQUIRE(request_conflict.conflicting_claim_id.has_value());
     CHECK(request_conflict.conflicting_claim_id.value() == timenav::ClaimId{61});
     REQUIRE(request_conflict.conflicting_targets.size() == 1);
     CHECK(request_conflict.conflicting_targets[0].resource_id == shared_zone);
+    REQUIRE(request_conflict.blocking_target.has_value());
+    CHECK(request_conflict.blocking_target->resource_id == shared_zone);
+    CHECK_FALSE(request_conflict.diagnostics.empty());
     CHECK(lease_conflict.decision == timenav::ClaimDecision::Deny);
     REQUIRE(lease_conflict.conflicting_lease_id.has_value());
     CHECK(lease_conflict.conflicting_lease_id.value() == timenav::LeaseId{71});
@@ -1569,6 +1722,24 @@ TEST_CASE("route reconstruction can rebuild structured route steps") {
     CHECK(steps.value()[2].cumulative_cost == doctest::Approx(2.0));
 }
 
+TEST_CASE("route plan validation rejects inconsistent route shapes and endpoints") {
+    timenav::RoutePlan invalid_shape{};
+    invalid_shape.start_node_id = zoneout::UUID("cccccccc-0000-4000-8000-000000000001");
+    invalid_shape.goal_node_id = zoneout::UUID("cccccccc-0000-4000-8000-000000000003");
+    invalid_shape.traversed_node_ids = {invalid_shape.start_node_id, invalid_shape.goal_node_id};
+    invalid_shape.traversed_edge_ids = {zoneout::UUID("dddddddd-0000-4000-8000-000000000001"),
+                                        zoneout::UUID("dddddddd-0000-4000-8000-000000000002")};
+
+    const auto shape_check = timenav::validate_route_plan_shape(invalid_shape);
+    CHECK(shape_check.is_err());
+
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes{fixture.node_b_id, fixture.node_c_id};
+    const auto wrong_start = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    CHECK(wrong_start.is_err());
+}
+
 TEST_CASE("route cost accumulation sums traversed edge weights") {
     auto fixture = make_test_workspace();
     const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
@@ -1606,6 +1777,26 @@ TEST_CASE("route cost accumulation can include planner penalties") {
     REQUIRE(penalized_cost.is_ok());
     CHECK(graph_cost.value() == doctest::Approx(2.0));
     CHECK(penalized_cost.value() > graph_cost.value());
+}
+
+TEST_CASE("planner result propagates penalized route costs into the returned route plan") {
+    auto fixture = make_test_workspace();
+    const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+    REQUIRE(edge_ab.has_value());
+    fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.cost_bias"] = "3.5";
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_c_id, true);
+    dp::Vector<zoneout::UUID> route_nodes{fixture.node_a_id, fixture.node_b_id, fixture.node_c_id};
+    const auto raw_cost = timenav::accumulate_route_cost(index, route_nodes, timenav::RouteCostModel::GraphWeight);
+
+    REQUIRE(result.plan.has_value());
+    REQUIRE(raw_cost.is_ok());
+    CHECK(result.search.distance == doctest::Approx(result.plan->total_cost));
+    CHECK(result.plan->total_cost > raw_cost.value());
+    REQUIRE(result.plan->steps.size() == 3);
+    CHECK(result.plan->steps[1].step_cost > 1.0);
+    CHECK(result.plan->steps[2].cumulative_cost == doctest::Approx(result.plan->total_cost));
 }
 
 TEST_CASE("edge blocking excludes routes through blocked zone or edge policy") {
@@ -2374,6 +2565,20 @@ TEST_CASE("workspace index can borrow or own a workspace and expose the root zon
     REQUIRE(owned_index.root_zone() != nullptr);
     CHECK(owned_index.root_zone()->id() == owned_root_id);
     CHECK(owned_index.root_zone_id().value() == owned_root_id);
+}
+
+TEST_CASE("workspace index can refresh borrowed workspace caches after mutation") {
+    auto fixture = make_test_workspace();
+    auto &workspace = fixture.workspace;
+    timenav::WorkspaceIndex index{workspace};
+
+    const auto new_node_id = zoneout::UUID("90909090-9090-4090-8090-909090909090");
+    workspace.add_node(zoneout::NodeData{new_node_id, dp::Point{15.0, 15.0, 0.0}});
+
+    CHECK(index.node(new_node_id) == nullptr);
+    index.refresh();
+    REQUIRE(index.node(new_node_id) != nullptr);
+    CHECK(index.node(new_node_id)->id == new_node_id);
 }
 
 TEST_CASE("workspace index resolves zones by uuid") {

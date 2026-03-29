@@ -51,6 +51,8 @@ namespace timenav {
         dp::Optional<ClaimId> conflicting_claim_id;
         dp::Optional<LeaseId> conflicting_lease_id;
         dp::Vector<ClaimTarget> conflicting_targets;
+        dp::Optional<ClaimTarget> blocking_target;
+        dp::Vector<dp::String> diagnostics;
     };
 
 } // namespace timenav
