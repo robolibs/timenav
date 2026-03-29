@@ -41,4 +41,22 @@ namespace timenav::vda {
 
     inline Order Adapter::order_from_route(const RoutePlan &route_plan) const { return map_route_plan(route_plan); }
 
+    inline State map_robot_state(const RobotState &robot_state) {
+        State state{};
+        state.agv_id = dp::String{std::to_string(robot_state.robot_id.raw())};
+        state.operating_mode = robot_state.route_plan.has_value() ? dp::String{"AUTOMATIC"} : dp::String{"IDLE"};
+        if (robot_state.current_node_id.has_value()) {
+            state.last_node_id = uuid_string(*robot_state.current_node_id);
+        }
+        if (robot_state.current_edge_id.has_value()) {
+            state.last_edge_id = uuid_string(*robot_state.current_edge_id);
+        }
+        if (!robot_state.pending_claim_ids.empty()) {
+            state.errors.push_back(dp::String{"pending_claims"});
+        }
+        return state;
+    }
+
+    inline State Adapter::state_from_robot(const RobotState &robot_state) const { return map_robot_state(robot_state); }
+
 } // namespace timenav::vda

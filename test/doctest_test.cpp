@@ -418,6 +418,28 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
     CHECK(order.edges[0].end_node_id == fixture.node_b_id.toString());
 }
 
+TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
+    timenav::RobotState robot_state{};
+    robot_state.robot_id = timenav::RobotId{77};
+    robot_state.current_node_id = zoneout::UUID("11111111-1111-4111-8111-111111111111");
+    robot_state.current_edge_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
+    robot_state.pending_claim_ids.push_back(timenav::ClaimId{5});
+
+    const timenav::vda::Adapter adapter{};
+    const auto state = adapter.state_from_robot(robot_state);
+    const auto direct_state = timenav::vda::map_robot_state(robot_state);
+
+    CHECK(state.agv_id == "77");
+    CHECK(direct_state.agv_id == state.agv_id);
+    CHECK(state.operating_mode == "IDLE");
+    REQUIRE(state.last_node_id.has_value());
+    REQUIRE(state.last_edge_id.has_value());
+    CHECK(state.last_node_id.value() == "11111111-1111-4111-8111-111111111111");
+    CHECK(state.last_edge_id.value() == "22222222-2222-4222-8222-222222222222");
+    CHECK(state.errors.size() == 1);
+    CHECK(state.errors[0] == "pending_claims");
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
