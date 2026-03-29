@@ -291,6 +291,26 @@ TEST_CASE("claim manager scaffold can be default constructed or bound to an inde
     CHECK(indexed_manager.lease_count() == 0);
 }
 
+TEST_CASE("claim manager stores active claim requests") {
+    timenav::ClaimManager manager{};
+
+    timenav::ClaimRequest request{};
+    request.id = timenav::ClaimId{41};
+    request.robot_id = timenav::RobotId{7};
+    request.mission_id = timenav::MissionId{9};
+    request.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zoneout::UUID("10101010-1010-4010-8010-101010101010")});
+
+    manager.add_request(request);
+
+    CHECK_FALSE(manager.empty());
+    CHECK(manager.request_count() == 1);
+    REQUIRE(manager.find_request(timenav::ClaimId{41}) != nullptr);
+    CHECK(manager.find_request(timenav::ClaimId{41})->robot_id == timenav::RobotId{7});
+    CHECK(manager.requests().size() == 1);
+    CHECK(manager.find_request(timenav::ClaimId{99}) == nullptr);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

@@ -1249,7 +1249,7 @@ Target:
 
 - [x] Slice 5.1: add `claim.hpp` with request, lease, and target types
 - [x] Slice 5.2: add `claim_manager.hpp` scaffold
-- [ ] Slice 5.3: add storage for active claim requests
+- [x] Slice 5.3: add storage for active claim requests
 - [ ] Slice 5.4: add storage for granted leases
 - [ ] Slice 5.5: add compatibility matrix for zone claims
 - [ ] Slice 5.6: add compatibility matrix for edge and node claims
