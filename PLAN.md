@@ -1256,7 +1256,7 @@ Target:
 - [x] Slice 5.7: add claim grant/deny evaluation
 - [x] Slice 5.8: add lease release path
 - [x] Slice 5.9: add lease expiry handling
-- [ ] Slice 5.10: add tests for conflicting and non-conflicting claim scenarios
+- [x] Slice 5.10: add tests for conflicting and non-conflicting claim scenarios
 
 ### Milestone 6: Scheduling And Coordination
 

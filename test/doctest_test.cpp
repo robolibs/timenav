@@ -468,6 +468,52 @@ TEST_CASE("claim manager expires leases at or before the current tick") {
     CHECK(manager.find_lease(timenav::LeaseId{93}) != nullptr);
 }
 
+TEST_CASE("claim manager regression covers conflicting and non-conflicting scenarios") {
+    timenav::ClaimManager manager{};
+    const auto zone_id = zoneout::UUID("c0c0c0c0-c0c0-40c0-80c0-c0c0c0c0c0c0");
+    const auto edge_id = zoneout::UUID("d0d0d0d0-d0d0-40d0-80d0-d0d0d0d0d0d0");
+
+    timenav::ClaimRequest baseline{};
+    baseline.id = timenav::ClaimId{101};
+    baseline.access_mode = timenav::ClaimAccessMode::Exclusive;
+    baseline.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zone_id});
+    manager.add_request(baseline);
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{102};
+    lease.access_mode = timenav::ClaimAccessMode::Exclusive;
+    lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, edge_id});
+    lease.expires_at_tick = 20;
+    manager.add_lease(lease);
+
+    timenav::ClaimRequest conflicting_zone{};
+    conflicting_zone.id = timenav::ClaimId{103};
+    conflicting_zone.access_mode = timenav::ClaimAccessMode::Exclusive;
+    conflicting_zone.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zone_id});
+
+    timenav::ClaimRequest conflicting_edge{};
+    conflicting_edge.id = timenav::ClaimId{104};
+    conflicting_edge.access_mode = timenav::ClaimAccessMode::Exclusive;
+    conflicting_edge.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, edge_id});
+
+    timenav::ClaimRequest non_conflicting{};
+    non_conflicting.id = timenav::ClaimId{105};
+    non_conflicting.access_mode = timenav::ClaimAccessMode::Shared;
+    non_conflicting.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Node, zoneout::UUID("e0e0e0e0-e0e0-40e0-80e0-e0e0e0e0e0e0")});
+
+    CHECK(manager.evaluate_request(conflicting_zone).decision == timenav::ClaimDecision::Deny);
+    CHECK(manager.evaluate_request(conflicting_edge).decision == timenav::ClaimDecision::Deny);
+    CHECK(manager.evaluate_request(non_conflicting).decision == timenav::ClaimDecision::Grant);
+
+    CHECK(manager.release_lease(timenav::LeaseId{102}));
+    CHECK(manager.evaluate_request(conflicting_edge).decision == timenav::ClaimDecision::Grant);
+
+    manager.add_lease(lease);
+    CHECK(manager.expire_leases(25) == 1);
+    CHECK(manager.evaluate_request(conflicting_edge).decision == timenav::ClaimDecision::Grant);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
