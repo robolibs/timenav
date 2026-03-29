@@ -1170,6 +1170,49 @@ TEST_CASE("claim manager regression covers conflicting and non-conflicting scena
     CHECK(manager.evaluate_request(conflicting_edge).decision == timenav::ClaimDecision::Grant);
 }
 
+TEST_CASE("claim manager regression covers windows archives and constrained hierarchy together") {
+    auto fixture = make_test_workspace();
+    auto &child_a = fixture.workspace.root_zone().children()[0];
+    child_a.set_property("traffic.max_occupancy", "2");
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager manager{index};
+
+    timenav::ClaimRequest active{};
+    active.id = timenav::ClaimId{1201};
+    active.access_mode = timenav::ClaimAccessMode::Shared;
+    active.window.start_tick = 10;
+    active.window.end_tick = 20;
+    active.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, child_a.id()});
+    manager.add_request(active);
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{1202};
+    lease.claim_id = timenav::ClaimId{1201};
+    lease.robot_id = timenav::RobotId{88};
+    lease.expires_at_tick = 15;
+    lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_ab_id});
+    manager.add_lease(lease);
+
+    timenav::ClaimRequest overlapping_edge{};
+    overlapping_edge.id = timenav::ClaimId{1203};
+    overlapping_edge.access_mode = timenav::ClaimAccessMode::Exclusive;
+    overlapping_edge.window.start_tick = 12;
+    overlapping_edge.window.end_tick = 14;
+    overlapping_edge.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_ab_id});
+
+    timenav::ClaimRequest later_zone = active;
+    later_zone.id = timenav::ClaimId{1204};
+    later_zone.window.start_tick = 30;
+    later_zone.window.end_tick = 40;
+
+    CHECK(manager.evaluate_request(overlapping_edge).decision == timenav::ClaimDecision::Deny);
+    CHECK(manager.evaluate_request(later_zone).decision == timenav::ClaimDecision::Grant);
+    CHECK(manager.expire_leases(20) == 1);
+    REQUIRE(manager.find_released_lease(timenav::LeaseId{1202}) != nullptr);
+    CHECK(manager.evaluate_request(overlapping_edge).decision == timenav::ClaimDecision::Grant);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
