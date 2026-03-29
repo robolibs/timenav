@@ -1261,7 +1261,7 @@ Target:
 ### Milestone 6: Scheduling And Coordination
 
 - [x] Slice 6.1: add `robot_state.hpp` with robot runtime state
-- [ ] Slice 6.2: add `coordinator.hpp` scaffold
+- [x] Slice 6.2: add `coordinator.hpp` scaffold
 - [ ] Slice 6.3: add robot registration/state tracking
 - [ ] Slice 6.4: add route-to-claim derivation helpers
 - [ ] Slice 6.5: add rolling-horizon claim generation
