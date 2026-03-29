@@ -432,6 +432,44 @@ TEST_CASE("coordinator updates robot progress by node and edge") {
     CHECK_FALSE(coordinator.update_robot_progress(timenav::RobotId{99}, fixture.node_a_id, fixture.edge_ab_id, 1));
 }
 
+TEST_CASE("coordinator releases leases behind current progress") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{61};
+    state.route_plan = route_plan.value();
+    state.current_node_id = fixture.node_b_id;
+    state.active_lease_ids.push_back(timenav::LeaseId{201});
+    state.active_lease_ids.push_back(timenav::LeaseId{202});
+    coordinator.register_robot(state);
+
+    timenav::Lease behind{};
+    behind.id = timenav::LeaseId{201};
+    behind.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Node, fixture.node_a_id});
+    coordinator.claim_manager().add_lease(behind);
+
+    timenav::Lease ahead{};
+    ahead.id = timenav::LeaseId{202};
+    ahead.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_bc_id});
+    coordinator.claim_manager().add_lease(ahead);
+
+    CHECK(coordinator.release_behind_progress(timenav::RobotId{61}) == 1);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{61}) != nullptr);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{61})->active_lease_ids.size() == 1);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{61})->active_lease_ids[0] == timenav::LeaseId{202});
+    CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{201}) == nullptr);
+    CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{202}) != nullptr);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 

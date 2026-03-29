@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <unordered_set>
 
 #include "timenav/claim_manager.hpp"
 #include "timenav/robot_state.hpp"
@@ -63,6 +64,60 @@ namespace timenav {
         }
 
         return request;
+    }
+
+    inline dp::u64 release_targets_behind_progress(RobotState &state, ClaimManager &claim_manager) {
+        if (!state.route_plan.has_value() || !state.current_node_id.has_value()) {
+            return 0;
+        }
+
+        const auto &route_plan = state.route_plan.value();
+        const auto current_node_it = std::find(route_plan.traversed_node_ids.begin(),
+                                               route_plan.traversed_node_ids.end(), *state.current_node_id);
+        if (current_node_it == route_plan.traversed_node_ids.end()) {
+            return 0;
+        }
+
+        const auto current_index =
+            static_cast<dp::u64>(std::distance(route_plan.traversed_node_ids.begin(), current_node_it));
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> remaining_node_ids;
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> remaining_edge_ids;
+
+        for (dp::u64 i = current_index; i < route_plan.traversed_node_ids.size(); ++i) {
+            remaining_node_ids.insert(route_plan.traversed_node_ids[i]);
+        }
+        for (dp::u64 i = current_index; i < route_plan.traversed_edge_ids.size(); ++i) {
+            remaining_edge_ids.insert(route_plan.traversed_edge_ids[i]);
+        }
+
+        dp::Vector<LeaseId> retained_lease_ids;
+        dp::u64 released = 0;
+
+        for (const auto lease_id : state.active_lease_ids) {
+            const auto *lease = claim_manager.find_lease(lease_id);
+            if (lease == nullptr) {
+                continue;
+            }
+
+            bool keep = false;
+            for (const auto &target : lease->targets) {
+                if ((target.kind == ClaimTargetKind::Node && remaining_node_ids.count(target.resource_id) > 0) ||
+                    (target.kind == ClaimTargetKind::Edge && remaining_edge_ids.count(target.resource_id) > 0) ||
+                    target.kind == ClaimTargetKind::Zone) {
+                    keep = true;
+                    break;
+                }
+            }
+
+            if (keep) {
+                retained_lease_ids.push_back(lease_id);
+            } else if (claim_manager.release_lease(lease_id)) {
+                ++released;
+            }
+        }
+
+        state.active_lease_ids = retained_lease_ids;
+        return released;
     }
 
     class Coordinator {
@@ -129,6 +184,15 @@ namespace timenav {
             state->current_edge_id = current_edge_id;
             state->updated_at_tick = updated_at_tick;
             return true;
+        }
+
+        [[nodiscard]] dp::u64 release_behind_progress(RobotId robot_id) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return 0;
+            }
+
+            return release_targets_behind_progress(*state, claim_manager_);
         }
 
       private:

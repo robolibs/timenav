@@ -1266,7 +1266,7 @@ Target:
 - [x] Slice 6.4: add route-to-claim derivation helpers
 - [x] Slice 6.5: add rolling-horizon claim generation
 - [x] Slice 6.6: add progress updates by current node / edge
-- [ ] Slice 6.7: add release-behind behavior after progress updates
+- [x] Slice 6.7: add release-behind behavior after progress updates
 - [ ] Slice 6.8: add basic schedule-window checks from zone properties
 - [ ] Slice 6.9: add simple priority/right-of-way arbitration hooks
 - [ ] Slice 6.10: add tests for multi-robot progress, release, and scheduling conflicts
