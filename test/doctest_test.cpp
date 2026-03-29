@@ -491,6 +491,19 @@ TEST_CASE("schedule window helpers detect route zone conflicts") {
     CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "night"));
 }
 
+TEST_CASE("arbitration hooks choose proceed yield or replan from simple priority signals") {
+    CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{5.0, 1.0, false, false}) ==
+          timenav::ArbitrationDecision::Proceed);
+    CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{1.0, 5.0, false, false}) ==
+          timenav::ArbitrationDecision::Yield);
+    CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{1.0, 1.0, false, true}) ==
+          timenav::ArbitrationDecision::Yield);
+    CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{1.0, 1.0, true, false}) ==
+          timenav::ArbitrationDecision::Proceed);
+    CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{1.0, 1.0, false, false}) ==
+          timenav::ArbitrationDecision::Replan);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 

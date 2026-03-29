@@ -140,6 +140,31 @@ namespace timenav {
         return route_schedule_window_conflicts(index, route_plan, active_window).empty();
     }
 
+    enum class ArbitrationDecision { Proceed, Yield, Replan };
+
+    struct ArbitrationContext {
+        dp::f64 self_priority = 0.0;
+        dp::f64 other_priority = 0.0;
+        bool self_holds_lease = false;
+        bool other_holds_lease = false;
+    };
+
+    inline ArbitrationDecision arbitrate_right_of_way(const ArbitrationContext &context) {
+        if (context.other_holds_lease && !context.self_holds_lease) {
+            return ArbitrationDecision::Yield;
+        }
+        if (context.self_holds_lease && !context.other_holds_lease) {
+            return ArbitrationDecision::Proceed;
+        }
+        if (context.self_priority > context.other_priority) {
+            return ArbitrationDecision::Proceed;
+        }
+        if (context.self_priority < context.other_priority) {
+            return ArbitrationDecision::Yield;
+        }
+        return ArbitrationDecision::Replan;
+    }
+
     class Coordinator {
       public:
         Coordinator() = default;
