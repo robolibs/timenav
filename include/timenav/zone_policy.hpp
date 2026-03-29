@@ -192,12 +192,13 @@ namespace timenav {
         for (const auto &[key, value] : properties) {
             policy.properties[dp::String{key}] = dp::String{value};
 
-            if (key == "traffic.policy") {
+            if (key == "traffic.policy" || key == "traffic.mode") {
                 policy.kind = detail::parse_zone_policy_kind(value);
-            } else if (key == "traffic.capacity") {
+            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_ok() && parsed.value() >= 1) {
                     policy.capacity = parsed.value();
+                    policy.capacity_is_explicit = true;
                     if (parsed.value() > 1 && policy.kind == ZonePolicyKind::Informational) {
                         policy.kind = ZonePolicyKind::CapacityLimited;
                     }
@@ -218,6 +219,16 @@ namespace timenav {
                         policy.blocks_traversal_without_grant = true;
                     }
                 }
+            } else if (key == "traffic.blocks_entry_without_grant") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.blocks_entry_without_grant = parsed.value();
+                }
+            } else if (key == "traffic.blocks_traversal_without_grant") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.blocks_traversal_without_grant = parsed.value();
+                }
             } else if (key == "traffic.priority") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
@@ -237,6 +248,14 @@ namespace timenav {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.stop_allowed = parsed.value();
+                }
+            } else if (key == "traffic.no_stop") {
+                const auto parsed = parse_traffic_bool(value);
+                if (parsed.is_ok()) {
+                    policy.stop_allowed = !parsed.value();
+                    if (parsed.value()) {
+                        policy.kind = ZonePolicyKind::NoStop;
+                    }
                 }
             } else if (key == "traffic.replan_trigger") {
                 const auto parsed = parse_traffic_bool(value);

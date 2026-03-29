@@ -1185,13 +1185,16 @@ TEST_CASE("edge traffic semantics exposes typed defaults") {
 
 TEST_CASE("zone policy parser reads known zone traffic keys") {
     const std::unordered_map<std::string, std::string> properties = {
-        {"traffic.policy", "exclusive"},
-        {"traffic.capacity", "3"},
+        {"traffic.mode", "exclusive"},
+        {"traffic.max_occupancy", "3"},
         {"traffic.claim_required", "true"},
+        {"traffic.blocks_entry_without_grant", "true"},
+        {"traffic.blocks_traversal_without_grant", "false"},
         {"traffic.priority", "7.5"},
         {"traffic.speed_limit", "1.2"},
         {"traffic.waiting_allowed", "false"},
         {"traffic.stop_allowed", "true"},
+        {"traffic.no_stop", "false"},
         {"traffic.entry_rule", "badge_check"},
         {"traffic.exit_rule", "gate_release"},
         {"traffic.robot_class", "forklift"},
@@ -1203,8 +1206,10 @@ TEST_CASE("zone policy parser reads known zone traffic keys") {
 
     CHECK(policy.kind == timenav::ZonePolicyKind::ExclusiveAccess);
     CHECK(policy.capacity == 3);
+    CHECK(policy.capacity_is_explicit);
     CHECK(policy.requires_claim);
     CHECK(policy.blocks_entry_without_grant);
+    CHECK_FALSE(policy.blocks_traversal_without_grant);
     REQUIRE(policy.priority.has_value());
     CHECK(policy.priority.value() == doctest::Approx(7.5));
     REQUIRE(policy.speed_limit.has_value());
