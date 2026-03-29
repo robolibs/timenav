@@ -239,3 +239,35 @@ TEST_CASE("workspace index resolves ancestor and descendant zones") {
     CHECK(child_a_descendants[0]->id() == grandchild.id());
     CHECK(index.descendant_zones(child_b.id()).empty());
 }
+
+TEST_CASE("workspace index supports basic uuid resolution across zones nodes and edges") {
+    const auto fixture = make_test_workspace();
+    const auto &workspace = fixture.workspace;
+    const auto &root = workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+    const auto &grandchild = child_a.children().at(0);
+
+    const timenav::WorkspaceIndex index{workspace};
+
+    REQUIRE(index.zone(root.id()) != nullptr);
+    REQUIRE(index.zone(child_a.id()) != nullptr);
+    REQUIRE(index.zone(child_b.id()) != nullptr);
+    REQUIRE(index.zone(grandchild.id()) != nullptr);
+    REQUIRE(index.node(fixture.node_a_id) != nullptr);
+    REQUIRE(index.node(fixture.node_b_id) != nullptr);
+    REQUIRE(index.node(fixture.node_c_id) != nullptr);
+    REQUIRE(index.edge(fixture.edge_ab_id) != nullptr);
+    REQUIRE(index.edge(fixture.edge_bc_id) != nullptr);
+
+    CHECK(index.node(fixture.node_a_id)->zone_ids.size() == 2);
+    CHECK(index.node(fixture.node_b_id)->zone_ids.size() == 2);
+    CHECK(index.node(fixture.node_c_id)->zone_ids.size() == 2);
+    CHECK(index.edge(fixture.edge_ab_id)->zone_ids.size() == 2);
+    CHECK(index.edge(fixture.edge_bc_id)->zone_ids.size() == 3);
+
+    const auto root_descendants = index.descendant_zones(root.id());
+    CHECK(root_descendants.size() == 3);
+    CHECK(index.parent_zone(grandchild.id())->id() == child_a.id());
+    CHECK(index.ancestor_zones(grandchild.id()).back()->id() == root.id());
+}
