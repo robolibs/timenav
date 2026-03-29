@@ -4,6 +4,7 @@
 
 #include "timenav/ids.hpp"
 #include "timenav/workspace_index.hpp"
+#include "timenav/zone_policy.hpp"
 
 namespace timenav {
 

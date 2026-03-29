@@ -110,6 +110,17 @@ namespace {
 
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
 
+TEST_CASE("zone policy exposes typed defaults") {
+    const timenav::ZonePolicy policy{};
+
+    CHECK(policy.kind == timenav::ZonePolicyKind::Informational);
+    CHECK(policy.capacity == 1);
+    CHECK_FALSE(policy.requires_claim);
+    CHECK_FALSE(policy.blocks_traversal_without_grant);
+    CHECK_FALSE(policy.blocks_entry_without_grant);
+    CHECK(policy.properties.empty());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};
