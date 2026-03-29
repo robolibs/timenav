@@ -1222,7 +1222,7 @@ Target:
 ### Milestone 3: Zone Policy And Property Parsing
 
 - [x] Slice 3.1: add `zone_policy.hpp` with typed zone policy enums and structs
-- [ ] Slice 3.2: add typed edge-traffic semantics struct for parsed edge properties
+- [x] Slice 3.2: add typed edge-traffic semantics struct for parsed edge properties
 - [ ] Slice 3.3: add parser for known `zone.properties` traffic keys
 - [ ] Slice 3.4: add parser for known `edge.properties` traffic keys
 - [ ] Slice 3.5: add boolean/number/string parsing utilities for traffic properties

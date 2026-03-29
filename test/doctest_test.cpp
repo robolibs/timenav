@@ -121,6 +121,21 @@ TEST_CASE("zone policy exposes typed defaults") {
     CHECK(policy.properties.empty());
 }
 
+TEST_CASE("edge traffic semantics exposes typed defaults") {
+    const timenav::EdgeTrafficSemantics semantics{};
+
+    CHECK_FALSE(semantics.directed);
+    CHECK_FALSE(semantics.speed_limit.has_value());
+    CHECK_FALSE(semantics.lane_type.has_value());
+    CHECK_FALSE(semantics.reversible.has_value());
+    CHECK_FALSE(semantics.passing_allowed.has_value());
+    CHECK_FALSE(semantics.priority.has_value());
+    CHECK_FALSE(semantics.capacity.has_value());
+    CHECK_FALSE(semantics.no_stop.has_value());
+    CHECK_FALSE(semantics.preferred_direction.has_value());
+    CHECK(semantics.properties.empty());
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};
