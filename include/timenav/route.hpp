@@ -43,6 +43,8 @@ namespace timenav {
         RouteFailureKind kind = RouteFailureKind::Unreachable;
         dp::String message;
         dp::Vector<zoneout::UUID> blocked_edge_ids;
+        dp::Vector<zoneout::UUID> blocked_zone_ids;
+        dp::Vector<zoneout::UUID> reachable_node_ids;
     };
 
     struct RoutePlanningResult {
@@ -653,30 +655,104 @@ namespace timenav {
     inline RouteFailure diagnose_route_failure(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
                                                const zoneout::UUID &goal_node_id) {
         if (index.node(start_node_id) == nullptr) {
-            return RouteFailure{RouteFailureKind::MissingStartNode, dp::String{"start node is not present"}, {}};
+            return RouteFailure{RouteFailureKind::MissingStartNode,
+                                dp::String{"start node is not present in workspace graph"},
+                                {},
+                                {},
+                                {}};
         }
         if (index.node(goal_node_id) == nullptr) {
-            return RouteFailure{RouteFailureKind::MissingGoalNode, dp::String{"goal node is not present"}, {}};
+            return RouteFailure{RouteFailureKind::MissingGoalNode,
+                                dp::String{"goal node is not present in workspace graph"},
+                                {},
+                                {},
+                                {}};
         }
 
         const auto unconstrained = shortest_path_search(index, start_node_id, goal_node_id);
         if (unconstrained.found) {
-            const auto unconstrained_nodes = reconstruct_route_nodes(unconstrained, start_node_id, goal_node_id);
-            const auto unconstrained_edges = extract_traversed_edge_ids(index, unconstrained_nodes);
+            const auto blocked_search = shortest_path_search_with_blocking(index, start_node_id, goal_node_id);
             dp::Vector<zoneout::UUID> blocked_edge_ids;
-            if (unconstrained_edges.is_ok()) {
-                for (const auto &edge_id : unconstrained_edges.value()) {
-                    if (is_edge_hard_blocked(index, edge_id)) {
-                        blocked_edge_ids.push_back(edge_id);
+            dp::Vector<zoneout::UUID> blocked_zone_ids;
+            std::unordered_set<zoneout::UUID, zoneout::UUIDHash> seen_blocked_edge_ids;
+            std::unordered_set<zoneout::UUID, zoneout::UUIDHash> seen_blocked_zone_ids;
+
+            dp::Vector<zoneout::UUID> reachable_node_ids;
+            reachable_node_ids.reserve(blocked_search.distances.size());
+            for (const auto &[node_id, _] : blocked_search.distances) {
+                reachable_node_ids.push_back(node_id);
+            }
+            if (reachable_node_ids.empty()) {
+                reachable_node_ids.push_back(start_node_id);
+            }
+
+            GraphTraversalAdapter adapter{index};
+            for (const auto &node_id : reachable_node_ids) {
+                for (const auto &neighbor : adapter.neighbors(node_id)) {
+                    if (!is_edge_hard_blocked(index, neighbor.edge_id)) {
+                        continue;
+                    }
+
+                    if (seen_blocked_edge_ids.insert(neighbor.edge_id).second) {
+                        blocked_edge_ids.push_back(neighbor.edge_id);
+                    }
+
+                    for (const auto &zone_id : blocked_zones_for_edge(index, neighbor.edge_id)) {
+                        if (seen_blocked_zone_ids.insert(zone_id).second) {
+                            blocked_zone_ids.push_back(zone_id);
+                        }
                     }
                 }
             }
 
-            return RouteFailure{RouteFailureKind::PolicyBlocked, dp::String{"route is blocked by traffic policy"},
-                                blocked_edge_ids};
+            if (blocked_edge_ids.empty()) {
+                const auto unconstrained_nodes = reconstruct_route_nodes(unconstrained, start_node_id, goal_node_id);
+                const auto unconstrained_edges = extract_traversed_edge_ids(index, unconstrained_nodes);
+                if (unconstrained_edges.is_ok()) {
+                    for (const auto &edge_id : unconstrained_edges.value()) {
+                        if (!is_edge_hard_blocked(index, edge_id)) {
+                            continue;
+                        }
+                        if (seen_blocked_edge_ids.insert(edge_id).second) {
+                            blocked_edge_ids.push_back(edge_id);
+                        }
+                        for (const auto &zone_id : blocked_zones_for_edge(index, edge_id)) {
+                            if (seen_blocked_zone_ids.insert(zone_id).second) {
+                                blocked_zone_ids.push_back(zone_id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            dp::String message = "route is blocked by traffic policy";
+            if (!blocked_edge_ids.empty() || !blocked_zone_ids.empty()) {
+                message += " (";
+                message += std::to_string(blocked_edge_ids.size());
+                message += " blocked edge(s), ";
+                message += std::to_string(blocked_zone_ids.size());
+                message += " blocked zone(s))";
+            }
+
+            return RouteFailure{RouteFailureKind::PolicyBlocked, message, blocked_edge_ids, blocked_zone_ids,
+                                reachable_node_ids};
         }
 
-        return RouteFailure{RouteFailureKind::Unreachable, dp::String{"goal is unreachable from start"}, {}};
+        dp::Vector<zoneout::UUID> reachable_node_ids;
+        reachable_node_ids.reserve(unconstrained.distances.size());
+        for (const auto &[node_id, _] : unconstrained.distances) {
+            reachable_node_ids.push_back(node_id);
+        }
+        if (reachable_node_ids.empty() && index.node(start_node_id) != nullptr) {
+            reachable_node_ids.push_back(start_node_id);
+        }
+
+        dp::String message = "goal is unreachable from start";
+        message += " after reaching ";
+        message += std::to_string(reachable_node_ids.size());
+        message += " node(s)";
+
+        return RouteFailure{RouteFailureKind::Unreachable, message, {}, {}, reachable_node_ids};
     }
 
     inline RoutePlanningResult plan_route(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
@@ -692,7 +768,7 @@ namespace timenav {
 
         const auto route_plan = build_route_plan(index, result.search, start_node_id, goal_node_id);
         if (route_plan.is_err()) {
-            result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}};
+            result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}, {}, {}};
             return result;
         }
 

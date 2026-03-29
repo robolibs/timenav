@@ -1317,7 +1317,7 @@ Still missing / still weak:
 - [x] Slice 4.6: add edge blocking from hard zone/edge policy
 - [x] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
 - [x] Slice 4.8: add extraction of traversed nodes / edges / zones from a route
-- [ ] Slice 4.9: add failure reporting for unreachable routes and policy-blocked routes
+- [x] Slice 4.9: add failure reporting for unreachable routes and policy-blocked routes
 - [ ] Slice 4.10: add planner tests on small workspace fixtures with blocked and allowed alternatives
 
 ### Milestone 5: Claims, Leases, And Conflicts

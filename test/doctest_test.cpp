@@ -1275,6 +1275,16 @@ TEST_CASE("planner failure reporting distinguishes unreachable and policy-blocke
         REQUIRE(result.failure.has_value());
         CHECK(result.failure->kind == timenav::RouteFailureKind::PolicyBlocked);
         CHECK_FALSE(result.failure->blocked_edge_ids.empty());
+        CHECK_FALSE(result.failure->blocked_zone_ids.empty());
+        bool saw_blocked_zone = false;
+        for (const auto &zone_id : result.failure->blocked_zone_ids) {
+            if (zone_id == fixture.blocked_zone_id) {
+                saw_blocked_zone = true;
+            }
+        }
+        CHECK(saw_blocked_zone);
+        CHECK_FALSE(result.failure->reachable_node_ids.empty());
+        CHECK(result.failure->message.find("blocked edge(s)") != dp::String::npos);
     }
 
     {
@@ -1287,7 +1297,39 @@ TEST_CASE("planner failure reporting distinguishes unreachable and policy-blocke
         REQUIRE(result.failure.has_value());
         CHECK(result.failure->kind == timenav::RouteFailureKind::Unreachable);
         CHECK(result.failure->blocked_edge_ids.empty());
+        CHECK(result.failure->blocked_zone_ids.empty());
+        CHECK(result.failure->reachable_node_ids.size() == 2);
+        bool saw_node_a = false;
+        bool saw_node_b = false;
+        for (const auto &node_id : result.failure->reachable_node_ids) {
+            if (node_id == fixture.node_a_id) {
+                saw_node_a = true;
+            }
+            if (node_id == fixture.node_b_id) {
+                saw_node_b = true;
+            }
+        }
+        CHECK(saw_node_a);
+        CHECK(saw_node_b);
+        CHECK(result.failure->message.find("reaching 2 node") != dp::String::npos);
     }
+}
+
+TEST_CASE("planner failure reporting distinguishes missing endpoints") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto missing_start =
+        timenav::plan_route(index, zoneout::UUID("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"), fixture.node_c_id, false);
+    REQUIRE(missing_start.failure.has_value());
+    CHECK(missing_start.failure->kind == timenav::RouteFailureKind::MissingStartNode);
+    CHECK(missing_start.failure->message.find("start node") != dp::String::npos);
+
+    const auto missing_goal =
+        timenav::plan_route(index, fixture.node_a_id, zoneout::UUID("ffffffff-1111-4222-8333-444444444444"), false);
+    REQUIRE(missing_goal.failure.has_value());
+    CHECK(missing_goal.failure->kind == timenav::RouteFailureKind::MissingGoalNode);
+    CHECK(missing_goal.failure->message.find("goal node") != dp::String::npos);
 }
 
 TEST_CASE("planner regression covers blocked and allowed alternative routes") {
