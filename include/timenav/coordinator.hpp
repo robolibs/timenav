@@ -117,6 +117,20 @@ namespace timenav {
             return rolling_horizon_claim_request(claim_id, *state, access_mode);
         }
 
+        [[nodiscard]] bool update_robot_progress(RobotId robot_id, const dp::Optional<zoneout::UUID> &current_node_id,
+                                                 const dp::Optional<zoneout::UUID> &current_edge_id,
+                                                 dp::u64 updated_at_tick) {
+            auto *state = find_robot_state(robot_id);
+            if (state == nullptr) {
+                return false;
+            }
+
+            state->current_node_id = current_node_id;
+            state->current_edge_id = current_edge_id;
+            state->updated_at_tick = updated_at_tick;
+            return true;
+        }
+
       private:
         const WorkspaceIndex *index_ = nullptr;
         ClaimManager claim_manager_{};

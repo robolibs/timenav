@@ -413,6 +413,25 @@ TEST_CASE("coordinator derives rolling horizon claim requests from registered ro
     CHECK(request.targets.back().kind == timenav::ClaimTargetKind::Node);
 }
 
+TEST_CASE("coordinator updates robot progress by node and edge") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::Coordinator coordinator{index};
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{51};
+    coordinator.register_robot(state);
+
+    CHECK(coordinator.update_robot_progress(timenav::RobotId{51}, fixture.node_b_id, fixture.edge_bc_id, 42));
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{51}) != nullptr);
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{51})->current_node_id.has_value());
+    REQUIRE(coordinator.find_robot_state(timenav::RobotId{51})->current_edge_id.has_value());
+    CHECK(coordinator.find_robot_state(timenav::RobotId{51})->current_node_id.value() == fixture.node_b_id);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{51})->current_edge_id.value() == fixture.edge_bc_id);
+    CHECK(coordinator.find_robot_state(timenav::RobotId{51})->updated_at_tick == 42);
+    CHECK_FALSE(coordinator.update_robot_progress(timenav::RobotId{99}, fixture.node_a_id, fixture.edge_ab_id, 1));
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 
