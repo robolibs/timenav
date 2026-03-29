@@ -311,6 +311,27 @@ TEST_CASE("claim manager stores active claim requests") {
     CHECK(manager.find_request(timenav::ClaimId{99}) == nullptr);
 }
 
+TEST_CASE("claim manager stores granted leases") {
+    timenav::ClaimManager manager{};
+
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{51};
+    lease.claim_id = timenav::ClaimId{41};
+    lease.robot_id = timenav::RobotId{7};
+    lease.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zoneout::UUID("20202020-2020-4020-8020-202020202020")});
+    lease.expires_at_tick = 123;
+
+    manager.add_lease(lease);
+
+    CHECK_FALSE(manager.empty());
+    CHECK(manager.lease_count() == 1);
+    REQUIRE(manager.find_lease(timenav::LeaseId{51}) != nullptr);
+    CHECK(manager.find_lease(timenav::LeaseId{51})->claim_id == timenav::ClaimId{41});
+    CHECK(manager.leases().size() == 1);
+    CHECK(manager.find_lease(timenav::LeaseId{99}) == nullptr);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
