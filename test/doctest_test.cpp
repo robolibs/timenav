@@ -755,6 +755,8 @@ TEST_CASE("coordinator releases leases behind current progress") {
     state.robot_id = timenav::RobotId{61};
     state.route_plan = route_plan.value();
     state.current_node_id = fixture.node_b_id;
+    state.progress_state = timenav::RobotProgressState::FollowingRoute;
+    state.updated_at_tick = 5;
     state.active_lease_ids.push_back(timenav::LeaseId{201});
     state.active_lease_ids.push_back(timenav::LeaseId{202});
     coordinator.register_robot(state);
@@ -767,14 +769,17 @@ TEST_CASE("coordinator releases leases behind current progress") {
     timenav::Lease ahead{};
     ahead.id = timenav::LeaseId{202};
     ahead.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_bc_id});
+    ahead.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, fixture.workspace.root_zone().children()[1].id()});
     coordinator.claim_manager().add_lease(ahead);
 
     CHECK(coordinator.release_behind_progress(timenav::RobotId{61}) == 1);
     REQUIRE(coordinator.find_robot_state(timenav::RobotId{61}) != nullptr);
     CHECK(coordinator.find_robot_state(timenav::RobotId{61})->active_lease_ids.size() == 1);
     CHECK(coordinator.find_robot_state(timenav::RobotId{61})->active_lease_ids[0] == timenav::LeaseId{202});
+    CHECK(coordinator.find_robot_state(timenav::RobotId{61})->last_claim_tick.value() == 5);
     CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{201}) == nullptr);
     CHECK(coordinator.claim_manager().find_lease(timenav::LeaseId{202}) != nullptr);
+    CHECK(coordinator.claim_manager().find_released_lease(timenav::LeaseId{201}) != nullptr);
 }
 
 TEST_CASE("schedule window helpers detect route zone conflicts") {

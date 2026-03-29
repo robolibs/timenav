@@ -132,12 +132,16 @@ namespace timenav {
             static_cast<dp::u64>(std::distance(route_plan.traversed_node_ids.begin(), current_node_it));
         std::unordered_set<zoneout::UUID, zoneout::UUIDHash> remaining_node_ids;
         std::unordered_set<zoneout::UUID, zoneout::UUIDHash> remaining_edge_ids;
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> remaining_zone_ids;
 
         for (dp::u64 i = current_index; i < route_plan.traversed_node_ids.size(); ++i) {
             remaining_node_ids.insert(route_plan.traversed_node_ids[i]);
         }
         for (dp::u64 i = current_index; i < route_plan.traversed_edge_ids.size(); ++i) {
             remaining_edge_ids.insert(route_plan.traversed_edge_ids[i]);
+        }
+        for (dp::u64 i = current_index; i < route_plan.traversed_zone_ids.size(); ++i) {
+            remaining_zone_ids.insert(route_plan.traversed_zone_ids[i]);
         }
 
         dp::Vector<LeaseId> retained_lease_ids;
@@ -153,7 +157,7 @@ namespace timenav {
             for (const auto &target : lease->targets) {
                 if ((target.kind == ClaimTargetKind::Node && remaining_node_ids.count(target.resource_id) > 0) ||
                     (target.kind == ClaimTargetKind::Edge && remaining_edge_ids.count(target.resource_id) > 0) ||
-                    target.kind == ClaimTargetKind::Zone) {
+                    (target.kind == ClaimTargetKind::Zone && remaining_zone_ids.count(target.resource_id) > 0)) {
                     keep = true;
                     break;
                 }
@@ -351,7 +355,11 @@ namespace timenav {
                 return 0;
             }
 
-            return release_targets_behind_progress(*state, claim_manager_);
+            const auto released = release_targets_behind_progress(*state, claim_manager_);
+            if (released > 0 && state->progress_state == RobotProgressState::FollowingRoute) {
+                state->last_claim_tick = state->updated_at_tick;
+            }
+            return released;
         }
 
       private:
