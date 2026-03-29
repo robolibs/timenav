@@ -1241,7 +1241,7 @@ Still missing / still weak:
 - [x] Slice 1.5: add zone lookup by UUID
 - [x] Slice 1.6: add node lookup by UUID
 - [x] Slice 1.7: add edge lookup by UUID
-- [ ] Slice 1.8: add parent-zone lookup and child-zone lookup
+- [x] Slice 1.8: add parent-zone lookup and child-zone lookup
 - [ ] Slice 1.9: add ancestor-zone and descendant-zone traversal helpers
 - [ ] Slice 1.10: add initial tests for basic workspace indexing and UUID resolution
 
