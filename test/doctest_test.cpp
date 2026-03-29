@@ -892,6 +892,50 @@ TEST_CASE("zone claim compatibility distinguishes overlapping exclusive and shar
     CHECK(timenav::ClaimManager::zone_claims_compatible(exclusive_request, disjoint_request));
 }
 
+TEST_CASE("zone claim evaluation respects zone hierarchy windows and capacity") {
+    auto fixture = make_test_workspace();
+    auto &child_a = fixture.workspace.root_zone().children()[0];
+    child_a.set_property("traffic.max_occupancy", "2");
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    timenav::ClaimManager manager{index};
+
+    const auto root_zone_id = fixture.workspace.root_zone().id();
+    const auto child_zone_id = child_a.id();
+
+    timenav::ClaimRequest baseline{};
+    baseline.id = timenav::ClaimId{701};
+    baseline.access_mode = timenav::ClaimAccessMode::Shared;
+    baseline.window.start_tick = 10;
+    baseline.window.end_tick = 20;
+    baseline.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, child_zone_id});
+    manager.add_request(baseline);
+
+    timenav::ClaimRequest sibling_shared = baseline;
+    sibling_shared.id = timenav::ClaimId{702};
+
+    timenav::ClaimRequest parent_exclusive{};
+    parent_exclusive.id = timenav::ClaimId{703};
+    parent_exclusive.access_mode = timenav::ClaimAccessMode::Exclusive;
+    parent_exclusive.window.start_tick = 12;
+    parent_exclusive.window.end_tick = 18;
+    parent_exclusive.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, root_zone_id});
+
+    timenav::ClaimRequest parent_later = parent_exclusive;
+    parent_later.id = timenav::ClaimId{704};
+    parent_later.window.start_tick = 30;
+    parent_later.window.end_tick = 40;
+
+    const auto shared_eval = manager.evaluate_request(sibling_shared);
+    const auto conflicting_parent_eval = manager.evaluate_request(parent_exclusive);
+    const auto later_parent_eval = manager.evaluate_request(parent_later);
+
+    CHECK(shared_eval.decision == timenav::ClaimDecision::Grant);
+    CHECK(conflicting_parent_eval.decision == timenav::ClaimDecision::Deny);
+    CHECK(conflicting_parent_eval.conflicting_claim_id.value() == timenav::ClaimId{701});
+    CHECK(later_parent_eval.decision == timenav::ClaimDecision::Grant);
+}
+
 TEST_CASE("edge and node claim compatibility detect overlapping exclusive targets") {
     const auto shared_node = zoneout::UUID("50505050-5050-4050-8050-505050505050");
     const auto shared_edge = zoneout::UUID("60606060-6060-4060-8060-606060606060");

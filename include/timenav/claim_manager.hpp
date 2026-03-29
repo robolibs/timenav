@@ -1,9 +1,11 @@
 #pragma once
 
 #include <algorithm>
+#include <limits>
 
 #include "timenav/claim.hpp"
 #include "timenav/workspace_index.hpp"
+#include "timenav/zone_policy.hpp"
 
 namespace timenav {
 
@@ -149,6 +151,7 @@ namespace timenav {
         [[nodiscard]] static bool claims_compatible(const ClaimRequest &request, const Lease &lease) noexcept {
             ClaimRequest lease_view{};
             lease_view.access_mode = lease.access_mode;
+            lease_view.window.end_tick = lease.expires_at_tick;
             lease_view.targets = lease.targets;
             return claims_compatible(request, lease_view);
         }
@@ -159,7 +162,7 @@ namespace timenav {
                     continue;
                 }
 
-                if (!claims_compatible(request, active_request)) {
+                if (!claims_compatible_for_current_index(request, active_request)) {
                     return ClaimEvaluation{ClaimDecision::Deny,
                                            dp::String{"conflicts with active request"},
                                            active_request.id,
@@ -173,7 +176,7 @@ namespace timenav {
                     continue;
                 }
 
-                if (!claims_compatible(request, active_lease)) {
+                if (!claims_compatible_for_current_index(request, active_lease)) {
                     return ClaimEvaluation{ClaimDecision::Deny,
                                            dp::String{"conflicts with granted lease"},
                                            dp::nullopt,
@@ -190,6 +193,105 @@ namespace timenav {
         }
 
       private:
+        [[nodiscard]] bool claims_compatible_for_current_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
+            if (index_ == nullptr) {
+                return claims_compatible(lhs, rhs);
+            }
+
+            return zone_claims_compatible_with_index(lhs, rhs) && node_claims_compatible_with_index(lhs, rhs) &&
+                   edge_claims_compatible_with_index(lhs, rhs);
+        }
+        [[nodiscard]] bool claims_compatible_for_current_index(const ClaimRequest &request, const Lease &lease) const {
+            ClaimRequest lease_view{};
+            lease_view.access_mode = lease.access_mode;
+            lease_view.window.end_tick = lease.expires_at_tick;
+            lease_view.targets = lease.targets;
+
+            return claims_compatible_for_current_index(request, lease_view);
+        }
+        [[nodiscard]] bool zone_claims_compatible_with_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
+            for (const auto &lhs_target : lhs.targets) {
+                if (lhs_target.kind != ClaimTargetKind::Zone) {
+                    continue;
+                }
+
+                for (const auto &rhs_target : rhs.targets) {
+                    if (rhs_target.kind != ClaimTargetKind::Zone) {
+                        continue;
+                    }
+
+                    if (!zones_overlap(lhs_target.resource_id, rhs_target.resource_id)) {
+                        continue;
+                    }
+                    if (!claim_windows_overlap(lhs.window, rhs.window)) {
+                        continue;
+                    }
+
+                    const auto policy = overlapping_zone_policy(lhs_target.resource_id, rhs_target.resource_id);
+                    const bool both_shared =
+                        lhs.access_mode == ClaimAccessMode::Shared && rhs.access_mode == ClaimAccessMode::Shared;
+                    if (both_shared && policy.capacity > 1) {
+                        continue;
+                    }
+
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        [[nodiscard]] bool node_claims_compatible_with_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
+            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Node);
+        }
+        [[nodiscard]] bool edge_claims_compatible_with_index(const ClaimRequest &lhs, const ClaimRequest &rhs) const {
+            return target_kind_compatible(lhs, rhs, ClaimTargetKind::Edge);
+        }
+        [[nodiscard]] bool zones_overlap(const zoneout::UUID &lhs_zone_id, const zoneout::UUID &rhs_zone_id) const {
+            if (lhs_zone_id == rhs_zone_id) {
+                return true;
+            }
+
+            for (const auto *ancestor : index_->ancestor_zones(lhs_zone_id)) {
+                if (ancestor != nullptr && ancestor->id() == rhs_zone_id) {
+                    return true;
+                }
+            }
+            for (const auto *ancestor : index_->ancestor_zones(rhs_zone_id)) {
+                if (ancestor != nullptr && ancestor->id() == lhs_zone_id) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        [[nodiscard]] ZonePolicy overlapping_zone_policy(const zoneout::UUID &lhs_zone_id,
+                                                         const zoneout::UUID &rhs_zone_id) const {
+            if (const auto *lhs_zone = index_->zone(lhs_zone_id); lhs_zone != nullptr) {
+                if (lhs_zone_id == rhs_zone_id) {
+                    return parse_zone_policy(lhs_zone->properties());
+                }
+                if (const auto *parent = index_->parent_zone(lhs_zone_id);
+                    parent != nullptr && parent->id() == rhs_zone_id) {
+                    return parse_zone_policy(lhs_zone->properties());
+                }
+            }
+
+            if (const auto *rhs_zone = index_->zone(rhs_zone_id); rhs_zone != nullptr) {
+                if (const auto *parent = index_->parent_zone(rhs_zone_id);
+                    parent != nullptr && parent->id() == lhs_zone_id) {
+                    return parse_zone_policy(rhs_zone->properties());
+                }
+            }
+
+            return ZonePolicy{};
+        }
+        [[nodiscard]] static bool claim_windows_overlap(const ClaimWindow &lhs, const ClaimWindow &rhs) noexcept {
+            const auto lhs_start = lhs.start_tick.value_or(0);
+            const auto rhs_start = rhs.start_tick.value_or(0);
+            const auto lhs_end = lhs.end_tick.value_or(std::numeric_limits<dp::u64>::max());
+            const auto rhs_end = rhs.end_tick.value_or(std::numeric_limits<dp::u64>::max());
+            return lhs_start <= rhs_end && rhs_start <= lhs_end;
+        }
         [[nodiscard]] static bool target_kind_compatible(const ClaimRequest &lhs, const ClaimRequest &rhs,
                                                          ClaimTargetKind kind) noexcept {
             for (const auto &lhs_target : lhs.targets) {
