@@ -360,6 +360,7 @@ TEST_CASE("robot state exposes typed defaults") {
 TEST_CASE("coordinator scaffold can be default constructed or bound to an index") {
     const timenav::Coordinator empty_coordinator{};
     CHECK(empty_coordinator.index() == nullptr);
+    CHECK_FALSE(empty_coordinator.has_index());
     CHECK(empty_coordinator.empty());
     CHECK(empty_coordinator.robot_count() == 0);
 
@@ -368,9 +369,29 @@ TEST_CASE("coordinator scaffold can be default constructed or bound to an index"
     const timenav::Coordinator coordinator{index};
 
     CHECK(coordinator.index() == &index);
+    CHECK(coordinator.has_index());
     CHECK(coordinator.empty());
     CHECK(coordinator.robot_count() == 0);
     CHECK(coordinator.claim_manager().index() == &index);
+}
+
+TEST_CASE("coordinator scaffold supports rebinding and reset") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    timenav::Coordinator coordinator{};
+    CHECK_FALSE(coordinator.has_index());
+    coordinator.bind_index(index);
+    CHECK(coordinator.has_index());
+    CHECK(coordinator.claim_manager().index() == &index);
+
+    timenav::RobotState state{};
+    state.robot_id = timenav::RobotId{901};
+    coordinator.register_robot(state);
+    CHECK(coordinator.robot_count() == 1);
+    coordinator.clear();
+    CHECK(coordinator.empty());
+    CHECK(coordinator.claim_manager().empty());
 }
 
 TEST_CASE("vda order types expose typed defaults") {
