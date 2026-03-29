@@ -291,6 +291,20 @@ TEST_CASE("claim manager scaffold can be default constructed or bound to an inde
     CHECK(indexed_manager.lease_count() == 0);
 }
 
+TEST_CASE("robot state exposes typed defaults") {
+    const timenav::RobotState state{};
+
+    CHECK(state.robot_id.raw() == 0);
+    CHECK(state.mission_id.raw() == 0);
+    CHECK_FALSE(state.current_node_id.has_value());
+    CHECK_FALSE(state.current_edge_id.has_value());
+    CHECK_FALSE(state.route_plan.has_value());
+    CHECK(state.pending_claim_ids.empty());
+    CHECK(state.active_lease_ids.empty());
+    CHECK(state.horizon == 0);
+    CHECK(state.updated_at_tick == 0);
+}
+
 TEST_CASE("claim manager stores active claim requests") {
     timenav::ClaimManager manager{};
 

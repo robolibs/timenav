@@ -5,6 +5,7 @@
 #include "timenav/claim.hpp"
 #include "timenav/claim_manager.hpp"
 #include "timenav/ids.hpp"
+#include "timenav/robot_state.hpp"
 #include "timenav/route.hpp"
 #include "timenav/workspace_index.hpp"
 #include "timenav/zone_policy.hpp"
