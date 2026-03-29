@@ -47,6 +47,7 @@ namespace timenav {
         dp::String message;
         dp::Vector<zoneout::UUID> blocked_edge_ids;
         dp::Vector<zoneout::UUID> blocked_zone_ids;
+        dp::Vector<zoneout::UUID> directionally_blocked_edge_ids;
         dp::Vector<zoneout::UUID> reachable_node_ids;
     };
 
@@ -88,7 +89,12 @@ namespace timenav {
             return true;
         }
 
-        const auto direction = std::string(semantics.preferred_direction.value().c_str());
+        auto direction = std::string(semantics.preferred_direction.value().c_str());
+        std::transform(direction.begin(), direction.end(), direction.begin(),
+                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        const auto first = direction.find_first_not_of(" \t");
+        const auto last = direction.find_last_not_of(" \t");
+        direction = first == std::string::npos ? "" : direction.substr(first, last - first + 1);
         if (direction == "forward" || direction == "source_to_target") {
             return from_source || semantics.reversible.value_or(false);
         }
@@ -164,6 +170,18 @@ namespace timenav {
         if (semantics.capacity.has_value() && semantics.capacity.value() > 0) {
             penalty += 1.0 / static_cast<dp::f64>(semantics.capacity.value());
         }
+        if (semantics.lane_type.has_value() && semantics.lane_type.value() == "corridor") {
+            penalty += 0.75;
+        }
+        if (semantics.passing_allowed.has_value() && !semantics.passing_allowed.value()) {
+            penalty += 0.5;
+        }
+        if (semantics.directed && !semantics.reversible.value_or(false)) {
+            penalty += 0.25;
+        }
+        if (semantics.no_stop.value_or(false)) {
+            penalty += 2.0;
+        }
         if (semantics.clearance_width.has_value() && semantics.clearance_width.value() > 0.0) {
             penalty += 1.0 / semantics.clearance_width.value();
         }
@@ -175,6 +193,18 @@ namespace timenav {
             if (zone_policy.requires_claim || zone_policy.blocks_entry_without_grant ||
                 zone_policy.blocks_traversal_without_grant) {
                 penalty += 100.0;
+            }
+            if (zone_policy.priority.has_value()) {
+                penalty += std::max(0.0, 10.0 - zone_policy.priority.value()) * 0.05;
+            }
+            if (zone_policy.waiting_allowed.has_value() && !zone_policy.waiting_allowed.value()) {
+                penalty += 1.5;
+            }
+            if (zone_policy.stop_allowed.has_value() && !zone_policy.stop_allowed.value()) {
+                penalty += 2.0;
+            }
+            if (zone_policy.kind == ZonePolicyKind::Corridor) {
+                penalty += 0.75;
             }
         }
 
@@ -757,11 +787,13 @@ namespace timenav {
                                 dp::String{"start node is not present in workspace graph"},
                                 {},
                                 {},
+                                {},
                                 {}};
         }
         if (index.node(goal_node_id) == nullptr) {
             return RouteFailure{RouteFailureKind::MissingGoalNode,
                                 dp::String{"goal node is not present in workspace graph"},
+                                {},
                                 {},
                                 {},
                                 {}};
@@ -832,8 +864,8 @@ namespace timenav {
                 message += " blocked zone(s))";
             }
 
-            return RouteFailure{RouteFailureKind::PolicyBlocked, message, blocked_edge_ids, blocked_zone_ids,
-                                reachable_node_ids};
+            return RouteFailure{
+                RouteFailureKind::PolicyBlocked, message, blocked_edge_ids, blocked_zone_ids, {}, reachable_node_ids};
         }
 
         dp::Vector<zoneout::UUID> reachable_node_ids;
@@ -845,12 +877,46 @@ namespace timenav {
             reachable_node_ids.push_back(start_node_id);
         }
 
+        dp::Vector<zoneout::UUID> directionally_blocked_edge_ids;
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> seen_directional_edges;
+        for (const auto &node_id : reachable_node_ids) {
+            const auto *workspace = index.workspace();
+            if (workspace == nullptr) {
+                break;
+            }
+            const auto vertex_id = workspace->find_node(node_id);
+            if (!vertex_id.has_value()) {
+                continue;
+            }
+            for (const auto &edge : workspace->graph().edges()) {
+                const auto source = workspace->graph().source(edge.id);
+                const auto target = workspace->graph().target(edge.id);
+                if (source != *vertex_id && target != *vertex_id) {
+                    continue;
+                }
+                const bool from_source = source == *vertex_id;
+                if (allows_traversal_from_node(workspace->graph().edge_property(edge.id), from_source)) {
+                    continue;
+                }
+                const auto edge_uuid = workspace->graph().edge_property(edge.id).id;
+                if (seen_directional_edges.insert(edge_uuid).second) {
+                    directionally_blocked_edge_ids.push_back(edge_uuid);
+                }
+            }
+        }
+
         dp::String message = "goal is unreachable from start";
         message += " after reaching ";
         message += std::to_string(reachable_node_ids.size());
         message += " node(s)";
+        if (!directionally_blocked_edge_ids.empty()) {
+            message += " with ";
+            message += std::to_string(directionally_blocked_edge_ids.size());
+            message += " direction-locked edge(s)";
+        }
 
-        return RouteFailure{RouteFailureKind::Unreachable, message, {}, {}, reachable_node_ids};
+        return RouteFailure{RouteFailureKind::Unreachable,  message,           {}, {},
+                            directionally_blocked_edge_ids, reachable_node_ids};
     }
 
     inline RoutePlanningResult plan_route(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
@@ -867,7 +933,7 @@ namespace timenav {
         const auto cost_model = use_penalties ? RouteCostModel::Penalized : RouteCostModel::GraphWeight;
         const auto route_plan = build_route_plan(index, result.search, start_node_id, goal_node_id, cost_model);
         if (route_plan.is_err()) {
-            result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}, {}, {}};
+            result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}, {}, {}, {}};
             return result;
         }
 

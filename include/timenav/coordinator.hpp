@@ -280,11 +280,23 @@ namespace timenav {
         dp::f64 other_priority = 0.0;
         bool self_holds_lease = false;
         bool other_holds_lease = false;
+        bool self_is_emergency = false;
+        bool other_is_emergency = false;
         RobotProgressState self_state = RobotProgressState::Idle;
         RobotProgressState other_state = RobotProgressState::Idle;
+        dp::u64 self_wait_ticks = 0;
+        dp::u64 other_wait_ticks = 0;
+        dp::u64 self_remaining_steps = 0;
+        dp::u64 other_remaining_steps = 0;
     };
 
     inline ArbitrationDecision arbitrate_right_of_way(const ArbitrationContext &context) {
+        if (context.self_is_emergency && !context.other_is_emergency) {
+            return ArbitrationDecision::Proceed;
+        }
+        if (context.other_is_emergency && !context.self_is_emergency) {
+            return ArbitrationDecision::Yield;
+        }
         if (context.other_holds_lease && !context.self_holds_lease) {
             return ArbitrationDecision::Yield;
         }
@@ -310,6 +322,22 @@ namespace timenav {
         if (context.self_state == RobotProgressState::Waiting &&
             context.other_state == RobotProgressState::FollowingRoute) {
             return ArbitrationDecision::Yield;
+        }
+        if (context.self_state == RobotProgressState::Waiting && context.other_state == RobotProgressState::Waiting) {
+            if (context.self_wait_ticks > context.other_wait_ticks) {
+                return ArbitrationDecision::Proceed;
+            }
+            if (context.self_wait_ticks < context.other_wait_ticks) {
+                return ArbitrationDecision::Yield;
+            }
+        }
+        if (context.self_remaining_steps > 0 || context.other_remaining_steps > 0) {
+            if (context.self_remaining_steps < context.other_remaining_steps) {
+                return ArbitrationDecision::Proceed;
+            }
+            if (context.self_remaining_steps > context.other_remaining_steps) {
+                return ArbitrationDecision::Yield;
+            }
         }
         return ArbitrationDecision::Replan;
     }

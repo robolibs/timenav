@@ -1325,10 +1325,10 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] verify directionality handling exactly for all edge cases
-- [ ] deepen route cost modeling from traffic properties
-- [ ] improve diagnostics for blocked vs unreachable routes
-- [ ] add richer fixtures with overlapping zones, lane rules, and planner tradeoffs
+- [x] verify directionality handling exactly for all edge cases
+- [x] deepen route cost modeling from traffic properties
+- [x] improve diagnostics for blocked vs unreachable routes
+- [x] add richer fixtures with overlapping zones, lane rules, and planner tradeoffs
 
 - [x] Slice 4.1: add `route.hpp` with route step and route plan types
 - [x] Slice 4.2: add graph traversal adapter over the `zoneout` graph
@@ -1376,7 +1376,7 @@ Current state:
 Still missing / still weak:
 
 - [ ] build a stronger time-scheduling model beyond simple window checks
-- [ ] deepen priority/right-of-way behavior
+- [x] deepen priority/right-of-way behavior
 - [ ] add queueing and reservation-window logic
 - [ ] define richer robot progress/state lifecycle behavior
 
@@ -1517,7 +1517,7 @@ This section summarizes the major unfinished work that must still happen before 
 
 ### Traffic Rules
 
-- [ ] define right-of-way rules beyond simple priority comparison
+- [x] define right-of-way rules beyond simple priority comparison
 - [x] fix bounded-capacity enforcement for shared zone and edge claims
 - [ ] define waiting/no-stop behavior on lanes and zones
 - [ ] define corridor semantics clearly
@@ -1534,9 +1534,9 @@ This section summarizes the major unfinished work that must still happen before 
 
 ### Planner Depth
 
-- [ ] ensure planner honors `directed` semantics exactly
-- [ ] incorporate edge property semantics more completely into costing
-- [ ] incorporate zone property semantics more completely into costing
+- [x] ensure planner honors `directed` semantics exactly
+- [x] incorporate edge property semantics more completely into costing
+- [x] incorporate zone property semantics more completely into costing
 - [x] propagate penalized search costs into returned `RoutePlan` totals and timings
 - [ ] improve blocked-vs-unreachable diagnostics
 - [ ] add richer workspace fixtures to validate planner behavior
@@ -1561,8 +1561,8 @@ This section summarizes the major unfinished work that must still happen before 
 
 - [ ] add dedicated tests per major header/module
 - [ ] add malformed property and malformed workspace tests
-- [ ] add multi-robot conflict tests
-- [ ] add scheduler/priority/right-of-way tests
+- [x] add multi-robot conflict tests
+- [x] add scheduler/priority/right-of-way tests
 - [ ] add compatibility-layer tests against representative VDA `3.0.0` scenarios
 - [x] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
 - [x] add tests for repeated-zone routes and zone re-entry during progress updates

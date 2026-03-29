@@ -203,6 +203,38 @@ namespace {
         return fixture;
     }
 
+    RouteChoiceWorkspace make_lane_tradeoff_workspace() {
+        auto fixture = make_route_choice_workspace();
+        auto &lane_zone = fixture.workspace.root_zone().children()[0];
+        lane_zone.remove_property("traffic.blocked");
+        lane_zone.set_property("traffic.mode", "corridor");
+        lane_zone.set_property("traffic.waiting_allowed", "false");
+        lane_zone.set_property("traffic.priority", "1.0");
+        lane_zone.set_property("traffic.speed_limit", "0.4");
+
+        const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+        const auto edge_bd = fixture.workspace.find_edge(fixture.edge_bd_id);
+        const auto edge_ac = fixture.workspace.find_edge(fixture.edge_ac_id);
+        const auto edge_cd = fixture.workspace.find_edge(fixture.edge_cd_id);
+        if (!edge_ab.has_value() || !edge_bd.has_value() || !edge_ac.has_value() || !edge_cd.has_value()) {
+            throw std::runtime_error("expected all tradeoff route edges to exist");
+        }
+
+        fixture.workspace.graph().set_weight(*edge_ab, 1.0);
+        fixture.workspace.graph().set_weight(*edge_bd, 1.0);
+        fixture.workspace.graph().set_weight(*edge_ac, 2.2);
+        fixture.workspace.graph().set_weight(*edge_cd, 2.2);
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.lane_kind"] = "corridor";
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.passing_allowed"] = "false";
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.priority"] = "1.0";
+        fixture.workspace.graph().edge_property(*edge_bd).properties["traffic.reversible"] = "false";
+        fixture.workspace.graph().edge_property(*edge_bd).properties["traffic.speed_limit"] = "0.3";
+        fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.priority"] = "9.0";
+        fixture.workspace.graph().edge_property(*edge_cd).properties["traffic.speed_limit"] = "2.5";
+
+        return fixture;
+    }
+
     RouteChoiceWorkspace make_blocked_only_route_workspace() {
         auto fixture = make_route_choice_workspace();
 
@@ -1026,13 +1058,31 @@ TEST_CASE("arbitration hooks choose proceed yield or replan from simple priority
     CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{1.0, 1.0, false, false}) ==
           timenav::ArbitrationDecision::Replan);
     CHECK(timenav::arbitrate_right_of_way(
-              timenav::ArbitrationContext{1.0, 1.0, false, false, timenav::RobotProgressState::FollowingRoute,
+              timenav::ArbitrationContext{1.0, 1.0, false, false, false, false,
+                                          timenav::RobotProgressState::FollowingRoute,
                                           timenav::RobotProgressState::Waiting}) ==
           timenav::ArbitrationDecision::Proceed);
     CHECK(timenav::arbitrate_right_of_way(
-              timenav::ArbitrationContext{1.0, 1.0, false, false, timenav::RobotProgressState::Blocked,
+              timenav::ArbitrationContext{1.0, 1.0, false, false, false, false,
+                                          timenav::RobotProgressState::Blocked,
                                           timenav::RobotProgressState::FollowingRoute}) ==
           timenav::ArbitrationDecision::Yield);
+}
+
+TEST_CASE("arbitration considers emergency age and remaining-step tie breakers") {
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{1.0, 9.0, false, false, true, false, timenav::RobotProgressState::Waiting,
+                                          timenav::RobotProgressState::FollowingRoute}) ==
+          timenav::ArbitrationDecision::Proceed);
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{1.0, 1.0, false, false, false, false, timenav::RobotProgressState::Waiting,
+                                          timenav::RobotProgressState::Waiting, 20, 5}) ==
+          timenav::ArbitrationDecision::Proceed);
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{1.0, 1.0, false, false, false, false,
+                                          timenav::RobotProgressState::FollowingRoute,
+                                          timenav::RobotProgressState::FollowingRoute, 0, 0, 1, 4}) ==
+          timenav::ArbitrationDecision::Proceed);
 }
 
 TEST_CASE("coordinator regression covers multi-robot progress release and scheduling conflicts") {
@@ -1128,7 +1178,8 @@ TEST_CASE("coordinator regression covers rolling claims archived releases and pa
     CHECK(coordinator.claim_manager().find_released_lease(timenav::LeaseId{401}) != nullptr);
     CHECK_FALSE(timenav::route_matches_schedule_window(index, route_plan.value(), "day"));
     CHECK(timenav::arbitrate_right_of_way(timenav::ArbitrationContext{
-              2.0, 2.0, false, false, timenav::RobotProgressState::FollowingRoute, timenav::RobotProgressState::Waiting}) ==
+              2.0, 2.0, false, false, false, false, timenav::RobotProgressState::FollowingRoute,
+              timenav::RobotProgressState::Waiting}) ==
           timenav::ArbitrationDecision::Proceed);
 }
 
@@ -1877,6 +1928,20 @@ TEST_CASE("planner penalties include priority capacity and clearance pressure") 
     CHECK(constrained_penalty > roomy_penalty);
 }
 
+TEST_CASE("planner penalties include lane and zone semantics in route tradeoffs") {
+    const auto fixture = make_lane_tradeoff_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto constrained_penalty = timenav::edge_traversal_penalty(index, fixture.edge_ab_id);
+    const auto open_penalty = timenav::edge_traversal_penalty(index, fixture.edge_cd_id);
+    const auto result = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, true);
+
+    CHECK(constrained_penalty > open_penalty);
+    REQUIRE(result.plan.has_value());
+    REQUIRE(result.plan->traversed_node_ids.size() == 3);
+    CHECK(result.plan->traversed_node_ids[1] == fixture.node_c_id);
+}
+
 TEST_CASE("route extraction builds traversed nodes edges zones and steps") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
@@ -2020,6 +2085,19 @@ TEST_CASE("planner failure reporting distinguishes unreachable and policy-blocke
     }
 }
 
+TEST_CASE("planner diagnostics report direction-locked unreachable routes distinctly") {
+    auto fixture = make_directional_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto reverse_result = timenav::plan_route(index, fixture.node_b_id, fixture.node_a_id, false);
+
+    REQUIRE(reverse_result.failure.has_value());
+    CHECK(reverse_result.failure->kind == timenav::RouteFailureKind::Unreachable);
+    CHECK(reverse_result.failure->blocked_edge_ids.empty());
+    CHECK_FALSE(reverse_result.failure->directionally_blocked_edge_ids.empty());
+    CHECK(reverse_result.failure->message.find("direction-locked") != dp::String::npos);
+}
+
 TEST_CASE("planner failure reporting distinguishes missing endpoints") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
@@ -2063,6 +2141,45 @@ TEST_CASE("planner regression covers blocked and allowed alternative routes") {
         CHECK(result.plan->traversed_node_ids[1] == fixture.node_c_id);
         CHECK(result.plan->total_cost == doctest::Approx(4.0));
     }
+}
+
+TEST_CASE("planner honors reverse and bidirectional direction hints exactly") {
+    {
+        auto fixture = make_test_workspace();
+        const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+        REQUIRE(edge_ab.has_value());
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.preferred_direction"] = " reverse ";
+        const timenav::WorkspaceIndex index{fixture.workspace};
+
+        const auto forward = timenav::plan_route(index, fixture.node_a_id, fixture.node_b_id, false);
+        const auto reverse = timenav::plan_route(index, fixture.node_b_id, fixture.node_a_id, false);
+
+        CHECK_FALSE(forward.plan.has_value());
+        REQUIRE(reverse.plan.has_value());
+    }
+
+    {
+        auto fixture = make_test_workspace();
+        const auto edge_ab = fixture.workspace.find_edge(fixture.edge_ab_id);
+        REQUIRE(edge_ab.has_value());
+        fixture.workspace.graph().edge_property(*edge_ab).properties["traffic.preferred_direction"] = "BIDIRECTIONAL";
+        const timenav::WorkspaceIndex index{fixture.workspace};
+
+        REQUIRE(timenav::plan_route(index, fixture.node_a_id, fixture.node_b_id, false).plan.has_value());
+        REQUIRE(timenav::plan_route(index, fixture.node_b_id, fixture.node_a_id, false).plan.has_value());
+    }
+}
+
+TEST_CASE("coordinator multi-robot conflict regression covers richer right-of-way tie breakers") {
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{2.0, 2.0, false, false, false, false, timenav::RobotProgressState::Waiting,
+                                          timenav::RobotProgressState::Waiting, 30, 5, 0, 0}) ==
+          timenav::ArbitrationDecision::Proceed);
+    CHECK(timenav::arbitrate_right_of_way(
+              timenav::ArbitrationContext{2.0, 2.0, false, false, false, false,
+                                          timenav::RobotProgressState::FollowingRoute,
+                                          timenav::RobotProgressState::FollowingRoute, 0, 0, 5, 2}) ==
+          timenav::ArbitrationDecision::Yield);
 }
 
 TEST_CASE("planner regression keeps route details aligned across fixture variants") {
