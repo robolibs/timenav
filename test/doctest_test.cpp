@@ -386,3 +386,28 @@ TEST_CASE("workspace index exposes the workspace coordinate mode") {
     const timenav::WorkspaceIndex empty_index{};
     CHECK_FALSE(empty_index.coord_mode().has_value());
 }
+
+TEST_CASE("workspace index converts local and global coordinates with concord") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto global_origin = index.local_to_global(dp::Point{0.0, 0.0, 0.0});
+    REQUIRE(global_origin.is_ok());
+    CHECK(global_origin.value().latitude == doctest::Approx(52.0));
+    CHECK(global_origin.value().longitude == doctest::Approx(5.0));
+    CHECK(global_origin.value().altitude == doctest::Approx(10.0));
+
+    const auto local_origin = index.global_to_local(dp::Geo{52.0, 5.0, 10.0});
+    REQUIRE(local_origin.is_ok());
+    CHECK(local_origin.value().x == doctest::Approx(0.0).epsilon(1e-6));
+    CHECK(local_origin.value().y == doctest::Approx(0.0).epsilon(1e-6));
+    CHECK(local_origin.value().z == doctest::Approx(0.0).epsilon(1e-6));
+
+    const auto round_trip_global = index.local_to_global(dp::Point{5.0, 7.5, 1.0});
+    REQUIRE(round_trip_global.is_ok());
+    const auto round_trip_local = index.global_to_local(round_trip_global.value());
+    REQUIRE(round_trip_local.is_ok());
+    CHECK(round_trip_local.value().x == doctest::Approx(5.0).epsilon(1e-6));
+    CHECK(round_trip_local.value().y == doctest::Approx(7.5).epsilon(1e-6));
+    CHECK(round_trip_local.value().z == doctest::Approx(1.0).epsilon(1e-6));
+}

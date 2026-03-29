@@ -3,6 +3,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include <concord/concord.hpp>
 #include <zoneout/zoneout.hpp>
 
 namespace timenav {
@@ -142,6 +143,26 @@ namespace timenav {
             }
 
             return workspace_->coord_mode();
+        }
+        [[nodiscard]] dp::Result<dp::Geo> local_to_global(const dp::Point &local_point) const {
+            const auto reference = ref();
+            if (!reference.has_value()) {
+                return dp::Result<dp::Geo>::err(
+                    dp::Error::invalid_argument("local_to_global requires workspace reference origin"));
+            }
+
+            const auto wgs = concord::frame::to_wgs(concord::frame::ENU{local_point, *reference});
+            return dp::Result<dp::Geo>::ok(wgs.geo());
+        }
+        [[nodiscard]] dp::Result<dp::Point> global_to_local(const dp::Geo &global_point) const {
+            const auto reference = ref();
+            if (!reference.has_value()) {
+                return dp::Result<dp::Point>::err(
+                    dp::Error::invalid_argument("global_to_local requires workspace reference origin"));
+            }
+
+            const auto enu = concord::frame::to_enu(*reference, concord::earth::WGS{global_point});
+            return dp::Result<dp::Point>::ok(enu.point());
         }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
