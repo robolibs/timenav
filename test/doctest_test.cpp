@@ -161,6 +161,19 @@ TEST_CASE("shortest path search finds a basic route without traffic constraints"
     CHECK(search.predecessors.at(fixture.node_c_id) == fixture.node_b_id);
 }
 
+TEST_CASE("route reconstruction builds an ordered node sequence from predecessors") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const auto search = timenav::shortest_path_search(index, fixture.node_a_id, fixture.node_c_id);
+
+    const auto route_nodes = timenav::reconstruct_route_nodes(search, fixture.node_a_id, fixture.node_c_id);
+
+    REQUIRE(route_nodes.size() == 3);
+    CHECK(route_nodes[0] == fixture.node_a_id);
+    CHECK(route_nodes[1] == fixture.node_b_id);
+    CHECK(route_nodes[2] == fixture.node_c_id);
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 

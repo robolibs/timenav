@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include <queue>
 #include <unordered_map>
@@ -123,6 +124,30 @@ namespace timenav {
         }
 
         return state;
+    }
+
+    inline dp::Vector<zoneout::UUID> reconstruct_route_nodes(const RouteSearchState &search,
+                                                             const zoneout::UUID &start_node_id,
+                                                             const zoneout::UUID &goal_node_id) {
+        dp::Vector<zoneout::UUID> nodes;
+        if (!search.found) {
+            return nodes;
+        }
+
+        auto current = goal_node_id;
+        nodes.push_back(current);
+
+        while (current != start_node_id) {
+            const auto predecessor_it = search.predecessors.find(current);
+            if (predecessor_it == search.predecessors.end()) {
+                return dp::Vector<zoneout::UUID>{};
+            }
+            current = predecessor_it->second;
+            nodes.push_back(current);
+        }
+
+        std::reverse(nodes.begin(), nodes.end());
+        return nodes;
     }
 
 } // namespace timenav
