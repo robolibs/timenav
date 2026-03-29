@@ -252,6 +252,28 @@ TEST_CASE("route types expose typed defaults") {
     CHECK(search.predecessors.empty());
 }
 
+TEST_CASE("claim types expose typed defaults") {
+    const timenav::ClaimTarget target{};
+    const timenav::ClaimRequest request{};
+    const timenav::Lease lease{};
+
+    CHECK(target.kind == timenav::ClaimTargetKind::Zone);
+    CHECK(target.resource_id.isNull());
+    CHECK(request.id.raw() == 0);
+    CHECK(request.robot_id.raw() == 0);
+    CHECK(request.mission_id.raw() == 0);
+    CHECK(request.access_mode == timenav::ClaimAccessMode::Exclusive);
+    CHECK(request.priority == 0);
+    CHECK(request.targets.empty());
+    CHECK(lease.id.raw() == 0);
+    CHECK(lease.claim_id.raw() == 0);
+    CHECK(lease.robot_id.raw() == 0);
+    CHECK(lease.access_mode == timenav::ClaimAccessMode::Exclusive);
+    CHECK(lease.targets.empty());
+    CHECK_FALSE(lease.expires_at_tick.has_value());
+    CHECK(lease.active);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

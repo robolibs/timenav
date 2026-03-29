@@ -2,6 +2,7 @@
 
 #include <string_view>
 
+#include "timenav/claim.hpp"
 #include "timenav/ids.hpp"
 #include "timenav/route.hpp"
 #include "timenav/workspace_index.hpp"
