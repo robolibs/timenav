@@ -370,6 +370,15 @@ TEST_CASE("vda instant action types expose typed defaults") {
     CHECK(actions.actions.empty());
 }
 
+TEST_CASE("vda factsheet types expose typed defaults") {
+    const timenav::vda::Factsheet factsheet{};
+
+    CHECK(factsheet.manufacturer.empty());
+    CHECK(factsheet.serial_number.empty());
+    CHECK(factsheet.protocol_version == "3.0.0");
+    CHECK(factsheet.supported_actions.empty());
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
