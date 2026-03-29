@@ -317,7 +317,7 @@ namespace timenav {
                 if (parsed.is_ok()) {
                     semantics.speed_limit = parsed.value();
                 }
-            } else if (key == "traffic.lane_type") {
+            } else if (key == "traffic.lane_type" || key == "traffic.lane_kind") {
                 semantics.lane_type = dp::String{value};
             } else if (key == "traffic.reversible") {
                 const auto parsed = parse_traffic_bool(value);
@@ -339,10 +339,11 @@ namespace timenav {
                 if (parsed.is_ok()) {
                     semantics.priority = parsed.value();
                 }
-            } else if (key == "traffic.capacity") {
+            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_ok()) {
                     semantics.capacity = parsed.value();
+                    semantics.capacity_is_explicit = true;
                 }
             } else if (key == "traffic.clearance_width") {
                 const auto parsed = parse_traffic_f64(value);
@@ -370,7 +371,7 @@ namespace timenav {
                 if (parsed.is_ok()) {
                     semantics.no_stop = parsed.value();
                 }
-            } else if (key == "traffic.preferred_direction") {
+            } else if (key == "traffic.preferred_direction" || key == "traffic.direction") {
                 semantics.preferred_direction = dp::String{value};
             }
         }

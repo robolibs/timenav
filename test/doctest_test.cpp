@@ -1234,11 +1234,11 @@ TEST_CASE("zone policy parser reads known zone traffic keys") {
 TEST_CASE("edge traffic semantics parser reads known edge traffic keys") {
     const std::unordered_map<std::string, std::string> properties = {
         {"traffic.speed_limit", "2.5"},
-        {"traffic.lane_type", "corridor"},
+        {"traffic.lane_kind", "corridor"},
         {"traffic.reversible", "true"},
         {"traffic.passing_allowed", "false"},
         {"traffic.priority", "4.0"},
-        {"traffic.capacity", "2"},
+        {"traffic.max_occupancy", "2"},
         {"traffic.clearance_width", "1.4"},
         {"traffic.clearance_height", "2.1"},
         {"traffic.surface_type", "concrete"},
@@ -1246,7 +1246,7 @@ TEST_CASE("edge traffic semantics parser reads known edge traffic keys") {
         {"traffic.allowed_payload", "light"},
         {"traffic.cost_bias", "0.8"},
         {"traffic.no_stop", "true"},
-        {"traffic.preferred_direction", "eastbound"},
+        {"traffic.direction", "eastbound"},
     };
 
     const auto semantics = timenav::parse_edge_traffic_semantics(properties, true);
@@ -1264,6 +1264,7 @@ TEST_CASE("edge traffic semantics parser reads known edge traffic keys") {
     CHECK(semantics.priority.value() == doctest::Approx(4.0));
     REQUIRE(semantics.capacity.has_value());
     CHECK(semantics.capacity.value() == 2);
+    CHECK(semantics.capacity_is_explicit);
     REQUIRE(semantics.clearance_width.has_value());
     CHECK(semantics.clearance_width.value() == doctest::Approx(1.4));
     REQUIRE(semantics.clearance_height.has_value());
