@@ -447,6 +447,9 @@ TEST_CASE("vda connection types expose typed defaults") {
     CHECK(connection.manufacturer.empty());
     CHECK(connection.serial_number.empty());
     CHECK(connection.version == "3.0.0");
+    CHECK_FALSE(connection.connection_id.has_value());
+    CHECK(connection.status == timenav::vda::ConnectionStatus::Offline);
+    CHECK_FALSE(connection.timestamp_ms.has_value());
 }
 
 TEST_CASE("vda instant action types expose typed defaults") {

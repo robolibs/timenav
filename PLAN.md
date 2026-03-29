@@ -1386,7 +1386,7 @@ Still missing / still weak:
 
 - [x] Slice 7.1: add `vda/order.hpp`
 - [x] Slice 7.2: add `vda/state.hpp`
-- [ ] Slice 7.3: add `vda/connection.hpp`
+- [x] Slice 7.3: add `vda/connection.hpp`
 - [ ] Slice 7.4: add `vda/instant_actions.hpp`
 - [ ] Slice 7.5: add `vda/factsheet.hpp`
 - [ ] Slice 7.6: add `vda/responses.hpp`
