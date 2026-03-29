@@ -1392,7 +1392,7 @@ Still missing / still weak:
 - [x] Slice 7.6: add `vda/responses.hpp`
 - [x] Slice 7.7: add `vda/adapter.hpp`
 - [x] Slice 7.8: map internal route plans to VDA order-compatible objects
-- [ ] Slice 7.9: map internal runtime/claim state to VDA state-compatible objects
+- [x] Slice 7.9: map internal runtime/claim state to VDA state-compatible objects
 - [ ] Slice 7.10: add tests for VDA `3.0.0` compatibility mappings
 
 This gives at least **70** possible slices. You do not have to implement all of them immediately, but the first **50** are already naturally available by stopping somewhere in milestone 6 or early milestone 7.

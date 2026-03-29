@@ -75,6 +75,7 @@ namespace timenav::vda {
         [[nodiscard]] Order order_from_route(const RoutePlan &route_plan) const;
         [[nodiscard]] Order order_from_route(const WorkspaceIndex &index, const RoutePlan &route_plan) const;
         [[nodiscard]] State state_from_robot(const RobotState &robot_state) const;
+        [[nodiscard]] State state_from_robot(const RobotState &robot_state, const ClaimManager &claim_manager) const;
         [[nodiscard]] Connection connection_from_factsheet(const Factsheet &factsheet) const;
         [[nodiscard]] Response response_for_action(const InstantAction &action, ActionStatus status,
                                                    dp::Optional<dp::String> description = dp::nullopt,
@@ -107,8 +108,26 @@ namespace timenav::vda {
         }
         return state;
     }
+    inline State map_robot_state(const RobotState &robot_state, const ClaimManager &claim_manager) {
+        State state = map_robot_state(robot_state);
+        if (!robot_state.active_lease_ids.empty()) {
+            state.action_states.push_back(dp::String{"holding_leases"});
+        }
+        for (const auto lease_id : robot_state.active_lease_ids) {
+            if (claim_manager.find_lease(lease_id) == nullptr) {
+                state.errors.push_back(dp::String{"missing_lease"});
+            }
+        }
+        if (robot_state.hold_reason.has_value()) {
+            state.action_states.push_back(robot_state.hold_reason.value());
+        }
+        return state;
+    }
 
     inline State Adapter::state_from_robot(const RobotState &robot_state) const { return map_robot_state(robot_state); }
+    inline State Adapter::state_from_robot(const RobotState &robot_state, const ClaimManager &claim_manager) const {
+        return map_robot_state(robot_state, claim_manager);
+    }
 
     inline Connection Adapter::connection_from_factsheet(const Factsheet &factsheet) const {
         Connection connection{};

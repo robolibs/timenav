@@ -555,10 +555,15 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     robot_state.current_edge_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
     robot_state.progress_state = timenav::RobotProgressState::Waiting;
     robot_state.pending_claim_ids.push_back(timenav::ClaimId{5});
+    robot_state.active_lease_ids.push_back(timenav::LeaseId{6});
+    robot_state.hold_reason = "awaiting_clearance";
+
+    timenav::ClaimManager claim_manager{};
 
     const timenav::vda::Adapter adapter{};
     const auto state = adapter.state_from_robot(robot_state);
     const auto direct_state = timenav::vda::map_robot_state(robot_state);
+    const auto managed_state = adapter.state_from_robot(robot_state, claim_manager);
 
     CHECK(state.agv_id == "77");
     CHECK(direct_state.agv_id == state.agv_id);
@@ -572,6 +577,8 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     CHECK(state.driving_state.value() == "STOPPED");
     CHECK(state.errors.size() == 1);
     CHECK(state.errors[0] == "pending_claims");
+    CHECK(managed_state.errors.size() == 2);
+    CHECK(managed_state.action_states.size() == 2);
 }
 
 TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
