@@ -445,6 +445,29 @@ TEST_CASE("claim manager releases active leases by id") {
     CHECK_FALSE(manager.release_lease(timenav::LeaseId{81}));
 }
 
+TEST_CASE("claim manager expires leases at or before the current tick") {
+    timenav::ClaimManager manager{};
+
+    timenav::Lease expired{};
+    expired.id = timenav::LeaseId{91};
+    expired.expires_at_tick = 10;
+    manager.add_lease(expired);
+
+    timenav::Lease retained{};
+    retained.id = timenav::LeaseId{92};
+    retained.expires_at_tick = 20;
+    manager.add_lease(retained);
+
+    timenav::Lease no_expiry{};
+    no_expiry.id = timenav::LeaseId{93};
+    manager.add_lease(no_expiry);
+
+    CHECK(manager.expire_leases(10) == 1);
+    CHECK(manager.find_lease(timenav::LeaseId{91}) == nullptr);
+    CHECK(manager.find_lease(timenav::LeaseId{92}) != nullptr);
+    CHECK(manager.find_lease(timenav::LeaseId{93}) != nullptr);
+}
+
 TEST_CASE("graph traversal adapter exposes graph neighbors by uuid") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

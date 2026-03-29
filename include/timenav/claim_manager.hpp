@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "timenav/claim.hpp"
 #include "timenav/workspace_index.hpp"
 
@@ -28,6 +30,16 @@ namespace timenav {
             }
 
             return false;
+        }
+        [[nodiscard]] dp::u64 expire_leases(dp::u64 current_tick) {
+            const auto previous_size = active_leases_.size();
+            active_leases_.erase(std::remove_if(active_leases_.begin(), active_leases_.end(),
+                                                [current_tick](const Lease &lease) {
+                                                    return lease.expires_at_tick.has_value() &&
+                                                           lease.expires_at_tick.value() <= current_tick;
+                                                }),
+                                 active_leases_.end());
+            return previous_size - active_leases_.size();
         }
 
         [[nodiscard]] const ClaimRequest *find_request(ClaimId id) const noexcept {
