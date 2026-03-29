@@ -380,4 +380,69 @@ namespace timenav {
         return issues;
     }
 
+    inline ZonePolicy merge_zone_policy(const ZonePolicy &parent, const ZonePolicy &child) {
+        ZonePolicy merged = parent;
+
+        auto merged_kind = parent.kind;
+        if (parent.kind == ZonePolicyKind::Restricted || child.kind == ZonePolicyKind::Restricted) {
+            merged_kind = ZonePolicyKind::Restricted;
+        } else if (parent.kind == ZonePolicyKind::ExclusiveAccess || child.kind == ZonePolicyKind::ExclusiveAccess) {
+            merged_kind = ZonePolicyKind::ExclusiveAccess;
+        } else if (child.kind != ZonePolicyKind::Informational) {
+            merged_kind = child.kind;
+        }
+
+        merged.kind = merged_kind;
+        merged.capacity = std::min(parent.capacity, child.capacity);
+        merged.requires_claim = parent.requires_claim || child.requires_claim;
+        merged.blocks_traversal_without_grant =
+            parent.blocks_traversal_without_grant || child.blocks_traversal_without_grant;
+        merged.blocks_entry_without_grant = parent.blocks_entry_without_grant || child.blocks_entry_without_grant;
+
+        if (child.priority.has_value()) {
+            merged.priority = child.priority;
+        }
+        if (child.speed_limit.has_value()) {
+            merged.speed_limit = child.speed_limit;
+        }
+        if (child.waiting_allowed.has_value()) {
+            merged.waiting_allowed = child.waiting_allowed;
+        }
+        if (child.stop_allowed.has_value()) {
+            merged.stop_allowed = child.stop_allowed;
+        }
+        if (child.blocked.has_value()) {
+            merged.blocked = child.blocked;
+        }
+        if (child.replan_trigger.has_value()) {
+            merged.replan_trigger = child.replan_trigger;
+        }
+        if (child.entry_rule.has_value()) {
+            merged.entry_rule = child.entry_rule;
+        }
+        if (child.exit_rule.has_value()) {
+            merged.exit_rule = child.exit_rule;
+        }
+        if (child.robot_class.has_value()) {
+            merged.robot_class = child.robot_class;
+        }
+        if (child.schedule_window.has_value()) {
+            merged.schedule_window = child.schedule_window;
+        }
+        if (child.access_group.has_value()) {
+            merged.access_group = child.access_group;
+        }
+
+        for (const auto &[key, value] : child.properties) {
+            merged.properties[key] = value;
+        }
+
+        if (merged.kind == ZonePolicyKind::Restricted) {
+            merged.blocks_entry_without_grant = true;
+            merged.blocks_traversal_without_grant = true;
+        }
+
+        return merged;
+    }
+
 } // namespace timenav

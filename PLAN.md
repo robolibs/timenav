@@ -1227,7 +1227,7 @@ Target:
 - [x] Slice 3.4: add parser for known `edge.properties` traffic keys
 - [x] Slice 3.5: add boolean/number/string parsing utilities for traffic properties
 - [x] Slice 3.6: add validation errors/warnings for malformed traffic property values
-- [ ] Slice 3.7: add effective-policy merge rules for nested zones
+- [x] Slice 3.7: add effective-policy merge rules for nested zones
 - [ ] Slice 3.8: add effective edge semantics derivation combining structural fields and properties
 - [ ] Slice 3.9: add tests for property parsing, bad values, and inheritance/override rules
 - [ ] Slice 3.10: add documentation comments/examples for the supported `traffic.*` keys

@@ -290,6 +290,49 @@ TEST_CASE("traffic property validation reports malformed values") {
     }
 }
 
+TEST_CASE("zone policy merge rules honor dominance capacity and child overrides") {
+    timenav::ZonePolicy parent{};
+    parent.kind = timenav::ZonePolicyKind::ExclusiveAccess;
+    parent.capacity = 5;
+    parent.requires_claim = true;
+    parent.speed_limit = 1.0;
+    parent.waiting_allowed = true;
+    parent.properties["traffic.policy"] = "exclusive";
+
+    timenav::ZonePolicy child{};
+    child.kind = timenav::ZonePolicyKind::SharedAccess;
+    child.capacity = 2;
+    child.speed_limit = 0.5;
+    child.waiting_allowed = false;
+    child.entry_rule = dp::String{"badge"};
+    child.properties["traffic.entry_rule"] = "badge";
+
+    const auto merged = timenav::merge_zone_policy(parent, child);
+
+    CHECK(merged.kind == timenav::ZonePolicyKind::ExclusiveAccess);
+    CHECK(merged.capacity == 2);
+    CHECK(merged.requires_claim);
+    REQUIRE(merged.speed_limit.has_value());
+    CHECK(merged.speed_limit.value() == doctest::Approx(0.5));
+    REQUIRE(merged.waiting_allowed.has_value());
+    CHECK_FALSE(merged.waiting_allowed.value());
+    REQUIRE(merged.entry_rule.has_value());
+    CHECK(merged.entry_rule.value() == "badge");
+    const auto policy_it = merged.properties.find("traffic.policy");
+    REQUIRE(policy_it != merged.properties.end());
+    CHECK(policy_it->second == "exclusive");
+    const auto entry_rule_it = merged.properties.find("traffic.entry_rule");
+    REQUIRE(entry_rule_it != merged.properties.end());
+    CHECK(entry_rule_it->second == "badge");
+
+    timenav::ZonePolicy restricted_child{};
+    restricted_child.kind = timenav::ZonePolicyKind::Restricted;
+    const auto restricted = timenav::merge_zone_policy(parent, restricted_child);
+    CHECK(restricted.kind == timenav::ZonePolicyKind::Restricted);
+    CHECK(restricted.blocks_entry_without_grant);
+    CHECK(restricted.blocks_traversal_without_grant);
+}
+
 TEST_CASE("timenav strong id wrappers stay distinct") {
     const timenav::RobotId robot_id{7};
     const timenav::MissionId mission_id{7};
