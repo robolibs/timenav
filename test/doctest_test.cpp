@@ -638,6 +638,10 @@ TEST_CASE("route to claim helpers derive ordered claim targets and requests") {
     const auto request =
         timenav::claim_request_from_route(timenav::ClaimId{111}, timenav::RobotId{12}, timenav::MissionId{13},
                                           route_plan.value(), timenav::ClaimAccessMode::Exclusive);
+    const auto timed_request =
+        timenav::claim_request_from_route(timenav::ClaimId{112}, timenav::RobotId{12}, timenav::MissionId{13},
+                                          route_plan.value(), 50, 2.0, timenav::ClaimAccessMode::Shared);
+    const auto claim_window = timenav::claim_window_from_route(route_plan.value(), 50, 2.0);
 
     REQUIRE(targets.size() ==
             route_plan.value().traversed_zone_ids.size() + route_plan.value().traversed_edge_ids.size() +
@@ -653,6 +657,13 @@ TEST_CASE("route to claim helpers derive ordered claim targets and requests") {
     CHECK(request.targets.front().resource_id == targets.front().resource_id);
     CHECK(request.targets.back().kind == targets.back().kind);
     CHECK(request.targets.back().resource_id == targets.back().resource_id);
+    REQUIRE(timed_request.requested_at_tick.has_value());
+    CHECK(timed_request.requested_at_tick.value() == 50);
+    REQUIRE(timed_request.window.start_tick.has_value());
+    REQUIRE(timed_request.window.end_tick.has_value());
+    CHECK(timed_request.window.start_tick.value() == claim_window.start_tick.value());
+    CHECK(timed_request.window.end_tick.value() == claim_window.end_tick.value());
+    CHECK(timed_request.window.end_tick.value() == 54);
 }
 
 TEST_CASE("coordinator derives rolling horizon claim requests from registered robot routes") {

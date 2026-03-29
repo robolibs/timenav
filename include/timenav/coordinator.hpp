@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <unordered_set>
 
 #include "timenav/claim_manager.hpp"
@@ -24,6 +25,16 @@ namespace timenav {
         return targets;
     }
 
+    inline ClaimWindow claim_window_from_route(const RoutePlan &route_plan, dp::u64 start_tick = 0,
+                                               dp::f64 ticks_per_cost_unit = 1.0) {
+        ClaimWindow window{};
+        window.start_tick = start_tick;
+        const auto duration =
+            static_cast<dp::u64>(std::max<dp::f64>(0.0, std::ceil(route_plan.total_cost * ticks_per_cost_unit)));
+        window.end_tick = start_tick + duration;
+        return window;
+    }
+
     inline ClaimRequest claim_request_from_route(ClaimId claim_id, RobotId robot_id, MissionId mission_id,
                                                  const RoutePlan &route_plan,
                                                  ClaimAccessMode access_mode = ClaimAccessMode::Exclusive) {
@@ -33,6 +44,15 @@ namespace timenav {
         request.mission_id = mission_id;
         request.access_mode = access_mode;
         request.targets = claim_targets_from_route(route_plan);
+        return request;
+    }
+    inline ClaimRequest claim_request_from_route(ClaimId claim_id, RobotId robot_id, MissionId mission_id,
+                                                 const RoutePlan &route_plan, dp::u64 start_tick,
+                                                 dp::f64 ticks_per_cost_unit,
+                                                 ClaimAccessMode access_mode = ClaimAccessMode::Exclusive) {
+        ClaimRequest request = claim_request_from_route(claim_id, robot_id, mission_id, route_plan, access_mode);
+        request.requested_at_tick = start_tick;
+        request.window = claim_window_from_route(route_plan, start_tick, ticks_per_cost_unit);
         return request;
     }
 
