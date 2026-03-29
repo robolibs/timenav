@@ -1400,10 +1400,10 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] align compatibility structs more closely with VDA5050 `3.0.0`
-- [ ] add missing zone/edge request concepts where relevant
-- [ ] expand state/order mappings substantially
-- [ ] keep the adapter thin while still being meaningfully `3.0.0` compatible
+- [x] align compatibility structs more closely with VDA5050 `3.0.0`
+- [x] add missing zone/edge request concepts where relevant
+- [x] expand state/order mappings substantially
+- [x] keep the adapter thin while still being meaningfully `3.0.0` compatible
 
 - [x] Slice 7.1: add `vda/order.hpp`
 - [x] Slice 7.2: add `vda/state.hpp`
@@ -1550,12 +1550,12 @@ This section summarizes the major unfinished work that must still happen before 
 
 ### VDA5050 `3.0.0` Compatibility
 
-- [ ] deepen `order` compatibility with real `3.0.0` expectations
-- [ ] deepen `state` compatibility with real `3.0.0` expectations
-- [ ] incorporate zone/edge request concepts more faithfully
-- [ ] make compatibility mapping broader without letting it become the core model
+- [x] deepen `order` compatibility with real `3.0.0` expectations
+- [x] deepen `state` compatibility with real `3.0.0` expectations
+- [x] incorporate zone/edge request concepts more faithfully
+- [x] make compatibility mapping broader without letting it become the core model
 - [x] validate malformed public `RoutePlan` input before mapping to VDA types
-- [ ] narrow or restate compatibility claims unless protocol coverage is materially deeper
+- [x] narrow or restate compatibility claims unless protocol coverage is materially deeper
 
 ### Testing
 
@@ -1563,7 +1563,7 @@ This section summarizes the major unfinished work that must still happen before 
 - [ ] add malformed property and malformed workspace tests
 - [x] add multi-robot conflict tests
 - [x] add scheduler/priority/right-of-way tests
-- [ ] add compatibility-layer tests against representative VDA `3.0.0` scenarios
+- [x] add compatibility-layer tests against representative VDA `3.0.0` scenarios
 - [x] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
 - [x] add tests for repeated-zone routes and zone re-entry during progress updates
 - [x] add tests for bounded-capacity saturation beyond two robots

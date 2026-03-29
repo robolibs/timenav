@@ -433,6 +433,7 @@ TEST_CASE("coordinator scaffold supports rebinding and reset") {
 
 TEST_CASE("vda order types expose typed defaults") {
     const timenav::vda::ActionReference action{};
+    const timenav::vda::ResourceReservation reservation{};
     const timenav::vda::OrderNode node{};
     const timenav::vda::OrderEdge edge{};
     const timenav::vda::Order order{};
@@ -440,10 +441,15 @@ TEST_CASE("vda order types expose typed defaults") {
     CHECK(action.action_id.empty());
     CHECK(action.action_type.empty());
     CHECK_FALSE(action.blocking);
+    CHECK(reservation.target_id.empty());
+    CHECK(reservation.target_kind.empty());
+    CHECK_FALSE(reservation.requires_claim);
     CHECK(node.node_id.empty());
     CHECK(node.sequence_id.empty());
     CHECK_FALSE(node.released);
     CHECK_FALSE(node.zone_id.has_value());
+    CHECK_FALSE(node.node_position_hint.has_value());
+    CHECK(node.reservations.empty());
     CHECK(node.actions.empty());
     CHECK(edge.edge_id.empty());
     CHECK(edge.start_node_id.empty());
@@ -451,30 +457,42 @@ TEST_CASE("vda order types expose typed defaults") {
     CHECK_FALSE(edge.released);
     CHECK_FALSE(edge.zone_id.has_value());
     CHECK_FALSE(edge.max_speed.has_value());
+    CHECK(edge.bidirectional);
+    CHECK(edge.reservations.empty());
     CHECK(edge.actions.empty());
+    CHECK(order.header_id.empty());
     CHECK(order.order_id.empty());
     CHECK(order.order_update_id == 0);
     CHECK(order.version == "3.0.0");
+    CHECK_FALSE(order.timestamp_ms.has_value());
     CHECK(order.nodes.empty());
     CHECK(order.edges.empty());
 }
 
 TEST_CASE("vda state types expose typed defaults") {
     const timenav::vda::BatteryState battery{};
+    const timenav::vda::ReservationState reservation{};
     const timenav::vda::State state{};
 
     CHECK_FALSE(battery.battery_charge.has_value());
     CHECK_FALSE(battery.charging);
+    CHECK(reservation.target_id.empty());
+    CHECK(reservation.target_kind.empty());
+    CHECK(reservation.state.empty());
     CHECK(state.agv_id.empty());
     CHECK(state.operating_mode == timenav::vda::OperatingMode::Manual);
     CHECK(state.connection_state == timenav::vda::ConnectionState::Offline);
+    CHECK(state.order_update_id == 0);
     CHECK_FALSE(state.last_node_id.has_value());
     CHECK_FALSE(state.last_edge_id.has_value());
     CHECK_FALSE(state.order_id.has_value());
     CHECK_FALSE(state.driving_state.has_value());
+    CHECK_FALSE(state.paused);
     CHECK_FALSE(state.battery_state.battery_charge.has_value());
+    CHECK(state.reservation_states.empty());
     CHECK(state.action_states.empty());
     CHECK(state.errors.empty());
+    CHECK(state.information.empty());
 }
 
 TEST_CASE("vda connection types expose typed defaults") {
@@ -573,7 +591,9 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
     const auto direct_order = timenav::vda::map_route_plan(route_plan.value());
     const auto checked_order = timenav::vda::try_map_route_plan(route_plan.value());
 
+    CHECK(order.header_id == fixture.node_a_id.toString());
     CHECK(order.order_id == fixture.node_c_id.toString());
+    CHECK(order.order_update_id == 2);
     CHECK(direct_order.order_id == order.order_id);
     REQUIRE(checked_order.is_ok());
     CHECK(checked_order.value().order_id == order.order_id);
@@ -581,11 +601,15 @@ TEST_CASE("vda adapter maps route plans to order-compatible objects") {
     REQUIRE(order.edges.size() == 2);
     CHECK(order.nodes[0].node_id == fixture.node_a_id.toString());
     CHECK(order.nodes[1].sequence_id == "1");
+    REQUIRE(order.nodes[0].node_position_hint.has_value());
     CHECK(order.edges[0].edge_id == fixture.edge_ab_id.toString());
     CHECK(order.edges[0].start_node_id == fixture.node_a_id.toString());
     CHECK(order.edges[0].end_node_id == fixture.node_b_id.toString());
+    CHECK(order.edges[0].bidirectional);
     REQUIRE(indexed_order.nodes[0].zone_id.has_value());
     REQUIRE(indexed_order.edges[0].zone_id.has_value());
+    CHECK_FALSE(indexed_order.nodes[0].reservations.empty());
+    CHECK_FALSE(indexed_order.edges[0].reservations.empty());
 }
 
 TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
@@ -599,6 +623,16 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     robot_state.hold_reason = "awaiting_clearance";
 
     timenav::ClaimManager claim_manager{};
+    timenav::ClaimRequest pending{};
+    pending.id = timenav::ClaimId{5};
+    pending.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, zoneout::UUID("33333333-3333-4333-8333-333333333333")});
+    claim_manager.add_request(pending);
+    timenav::Lease lease{};
+    lease.id = timenav::LeaseId{6};
+    lease.targets.push_back(
+        timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, zoneout::UUID("44444444-4444-4444-8444-444444444444")});
+    claim_manager.add_lease(lease);
 
     const timenav::vda::Adapter adapter{};
     const auto state = adapter.state_from_robot(robot_state);
@@ -615,10 +649,13 @@ TEST_CASE("vda adapter maps runtime state to state-compatible objects") {
     CHECK(state.last_edge_id.value() == "22222222-2222-4222-8222-222222222222");
     REQUIRE(state.driving_state.has_value());
     CHECK(state.driving_state.value() == "STOPPED");
+    CHECK(state.paused);
     CHECK(state.errors.size() == 1);
     CHECK(state.errors[0] == "pending_claims");
-    CHECK(managed_state.errors.size() == 2);
+    CHECK(managed_state.errors.size() == 1);
     CHECK(managed_state.action_states.size() == 2);
+    CHECK(managed_state.reservation_states.size() == 2);
+    CHECK(managed_state.information.size() == 1);
 }
 
 TEST_CASE("vda route mapping rejects malformed public route plans safely") {
@@ -679,9 +716,11 @@ TEST_CASE("vda 3.0.0 compatibility mappings cover core typed models") {
 
     CHECK(connection.version == "3.0.0");
     CHECK(factsheet.protocol_version == "3.0.0");
+    CHECK(order.header_id == fixture.node_a_id.toString());
     CHECK(order.nodes.size() == 3);
     CHECK(order.edges.size() == 2);
     CHECK(state.agv_id == "88");
+    CHECK(state.order_update_id == 2);
     REQUIRE(state.last_node_id.has_value());
     REQUIRE(state.last_edge_id.has_value());
     CHECK(state.last_node_id.value() == fixture.node_b_id.toString());
@@ -712,6 +751,15 @@ TEST_CASE("vda 3.0.0 compatibility regression covers enriched transport mappings
     robot_state.hold_reason = "yielding";
 
     timenav::ClaimManager claim_manager{};
+    timenav::ClaimRequest pending{};
+    pending.id = timenav::ClaimId{702};
+    pending.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Zone, fixture.workspace.root_zone().id()});
+    claim_manager.add_request(pending);
+    timenav::Lease active_lease{};
+    active_lease.id = timenav::LeaseId{701};
+    active_lease.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_bc_id});
+    claim_manager.add_lease(active_lease);
+    robot_state.pending_claim_ids.push_back(timenav::ClaimId{702});
     const timenav::vda::Adapter adapter{};
 
     timenav::vda::Factsheet factsheet{};
@@ -731,12 +779,44 @@ TEST_CASE("vda 3.0.0 compatibility regression covers enriched transport mappings
 
     REQUIRE(order.nodes.front().zone_id.has_value());
     REQUIRE(order.edges.front().zone_id.has_value());
+    CHECK_FALSE(order.nodes.front().reservations.empty());
+    CHECK_FALSE(order.edges.front().reservations.empty());
     CHECK(state.connection_state == timenav::vda::ConnectionState::Online);
     CHECK(state.action_states.size() == 2);
+    CHECK(state.reservation_states.size() >= 2);
     CHECK(connection.status == timenav::vda::ConnectionStatus::Online);
     CHECK(response.status == timenav::vda::ActionStatus::Finished);
     REQUIRE(response.result_code.has_value());
     CHECK(response.result_code.value() == "ok");
+}
+
+TEST_CASE("vda compatibility regression covers representative route and claim reservations") {
+    auto fixture = make_lane_tradeoff_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    const auto route = timenav::plan_route(index, fixture.node_a_id, fixture.node_d_id, true);
+    REQUIRE(route.plan.has_value());
+
+    timenav::RobotState robot_state{};
+    robot_state.robot_id = timenav::RobotId{300};
+    robot_state.route_plan = route.plan.value();
+    robot_state.current_node_id = fixture.node_c_id;
+    robot_state.current_edge_id = fixture.edge_cd_id;
+    robot_state.pending_claim_ids.push_back(timenav::ClaimId{901});
+
+    timenav::ClaimManager claim_manager{index};
+    timenav::ClaimRequest pending{};
+    pending.id = timenav::ClaimId{901};
+    pending.targets.push_back(timenav::ClaimTarget{timenav::ClaimTargetKind::Edge, fixture.edge_cd_id});
+    claim_manager.add_request(pending);
+
+    const auto order = timenav::vda::try_map_route_plan(index, route.plan.value());
+    const auto state = timenav::vda::map_robot_state(robot_state, claim_manager);
+
+    REQUIRE(order.is_ok());
+    CHECK_FALSE(order.value().edges.empty());
+    CHECK_FALSE(order.value().edges.front().reservations.empty());
+    CHECK_FALSE(state.reservation_states.empty());
+    CHECK(state.reservation_states.front().state == "PENDING");
 }
 
 TEST_CASE("coordinator registers and updates robot state") {
