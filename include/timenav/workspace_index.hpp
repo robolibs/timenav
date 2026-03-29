@@ -83,6 +83,19 @@ namespace timenav {
 
             return zone_nodes;
         }
+        [[nodiscard]] dp::Vector<const zoneout::Zone *> zones_of_node(const zoneout::UUID &node_id) const {
+            dp::Vector<const zoneout::Zone *> node_zones;
+
+            if (const auto *node_data = node(node_id); node_data != nullptr) {
+                for (const auto &zone_id : node_data->zone_ids) {
+                    if (const auto *zone_data = zone(zone_id); zone_data != nullptr) {
+                        node_zones.push_back(zone_data);
+                    }
+                }
+            }
+
+            return node_zones;
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();

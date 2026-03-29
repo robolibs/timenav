@@ -298,3 +298,29 @@ TEST_CASE("workspace index lists nodes in each zone") {
 
     CHECK(index.nodes_in_zone(grandchild.id()).empty());
 }
+
+TEST_CASE("workspace index lists zones for each node") {
+    const auto fixture = make_test_workspace();
+    const auto &root = fixture.workspace.root_zone();
+    const auto &child_a = root.children().at(0);
+    const auto &child_b = root.children().at(1);
+
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    const auto node_a_zones = index.zones_of_node(fixture.node_a_id);
+    REQUIRE(node_a_zones.size() == 2);
+    CHECK(node_a_zones[0]->id() == root.id());
+    CHECK(node_a_zones[1]->id() == child_a.id());
+
+    const auto node_b_zones = index.zones_of_node(fixture.node_b_id);
+    REQUIRE(node_b_zones.size() == 2);
+    CHECK(node_b_zones[0]->id() == root.id());
+    CHECK(node_b_zones[1]->id() == child_a.id());
+
+    const auto node_c_zones = index.zones_of_node(fixture.node_c_id);
+    REQUIRE(node_c_zones.size() == 2);
+    CHECK(node_c_zones[0]->id() == root.id());
+    CHECK(node_c_zones[1]->id() == child_b.id());
+
+    CHECK(index.zones_of_node(zoneout::UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")).empty());
+}
