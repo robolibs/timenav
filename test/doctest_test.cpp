@@ -110,6 +110,23 @@ namespace {
 
 TEST_CASE("timenav exposes a version string") { CHECK(timenav::version() == "0.0.1"); }
 
+TEST_CASE("route types expose typed defaults") {
+    const timenav::RouteStep step{};
+    const timenav::RoutePlan plan{};
+    const timenav::RouteSearchState search{};
+
+    CHECK_FALSE(step.incoming_edge_id.has_value());
+    CHECK(plan.steps.empty());
+    CHECK(plan.traversed_node_ids.empty());
+    CHECK(plan.traversed_edge_ids.empty());
+    CHECK(plan.traversed_zone_ids.empty());
+    CHECK(plan.total_cost == doctest::Approx(0.0));
+    CHECK_FALSE(search.found);
+    CHECK(std::isinf(search.distance));
+    CHECK(search.distances.empty());
+    CHECK(search.predecessors.empty());
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 

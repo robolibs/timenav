@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "timenav/ids.hpp"
+#include "timenav/route.hpp"
 #include "timenav/workspace_index.hpp"
 #include "timenav/zone_policy.hpp"
 
