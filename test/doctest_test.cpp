@@ -17,6 +17,8 @@ namespace {
         zoneout::UUID node_a_id;
         zoneout::UUID node_b_id;
         zoneout::UUID node_c_id;
+        zoneout::UUID edge_ab_id;
+        zoneout::UUID edge_bc_id;
 
         explicit TestWorkspace(zoneout::Workspace workspace_value) : workspace(std::move(workspace_value)) {}
     };
@@ -51,10 +53,18 @@ namespace {
         fixture.node_a_id = zoneout::UUID("11111111-1111-4111-8111-111111111111");
         fixture.node_b_id = zoneout::UUID("22222222-2222-4222-8222-222222222222");
         fixture.node_c_id = zoneout::UUID("33333333-3333-4333-8333-333333333333");
+        fixture.edge_ab_id = zoneout::UUID("44444444-4444-4444-8444-444444444444");
+        fixture.edge_bc_id = zoneout::UUID("55555555-5555-4555-8555-555555555555");
 
-        fixture.workspace.add_node(zoneout::NodeData{fixture.node_a_id, dp::Point{20.0, 20.0, 0.0}});
-        fixture.workspace.add_node(zoneout::NodeData{fixture.node_b_id, dp::Point{30.0, 20.0, 0.0}});
-        fixture.workspace.add_node(zoneout::NodeData{fixture.node_c_id, dp::Point{70.0, 20.0, 0.0}});
+        const auto node_a_vertex =
+            fixture.workspace.add_node(zoneout::NodeData{fixture.node_a_id, dp::Point{20.0, 20.0, 0.0}});
+        const auto node_b_vertex =
+            fixture.workspace.add_node(zoneout::NodeData{fixture.node_b_id, dp::Point{30.0, 20.0, 0.0}});
+        const auto node_c_vertex =
+            fixture.workspace.add_node(zoneout::NodeData{fixture.node_c_id, dp::Point{70.0, 20.0, 0.0}});
+
+        fixture.workspace.add_edge(node_a_vertex, node_b_vertex, zoneout::EdgeData{fixture.edge_ab_id});
+        fixture.workspace.add_edge(node_b_vertex, node_c_vertex, zoneout::EdgeData{fixture.edge_bc_id});
 
         return fixture;
     }
@@ -147,4 +157,15 @@ TEST_CASE("workspace index resolves nodes by uuid") {
     REQUIRE(index.node(fixture.node_c_id) != nullptr);
     CHECK(index.node(fixture.node_c_id)->position == dp::Point{70.0, 20.0, 0.0});
     CHECK(index.node(zoneout::UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")) == nullptr);
+}
+
+TEST_CASE("workspace index resolves edges by uuid") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    REQUIRE(index.edge(fixture.edge_ab_id) != nullptr);
+    CHECK(index.edge(fixture.edge_ab_id)->id == fixture.edge_ab_id);
+    REQUIRE(index.edge(fixture.edge_bc_id) != nullptr);
+    CHECK(index.edge(fixture.edge_bc_id)->id == fixture.edge_bc_id);
+    CHECK(index.edge(zoneout::UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")) == nullptr);
 }

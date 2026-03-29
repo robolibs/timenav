@@ -35,6 +35,14 @@ namespace timenav {
             const auto it = nodes_.find(node_id);
             return it == nodes_.end() ? nullptr : &workspace_->graph()[it->second];
         }
+        [[nodiscard]] const zoneout::EdgeData *edge(const zoneout::UUID &edge_id) const noexcept {
+            if (workspace_ == nullptr) {
+                return nullptr;
+            }
+
+            const auto it = edges_.find(edge_id);
+            return it == edges_.end() ? nullptr : &workspace_->graph().edge_property(it->second);
+        }
         [[nodiscard]] dp::Optional<zoneout::UUID> root_zone_id() const {
             if (const auto *zone = root_zone(); zone != nullptr) {
                 return zone->id();
@@ -47,6 +55,7 @@ namespace timenav {
         void rebuild() {
             zones_.clear();
             nodes_.clear();
+            edges_.clear();
 
             if (workspace_ == nullptr) {
                 return;
@@ -57,12 +66,16 @@ namespace timenav {
             for (const auto vertex_id : workspace_->graph().vertices()) {
                 nodes_[workspace_->graph()[vertex_id].id] = vertex_id;
             }
+            for (const auto &edge : workspace_->graph().edges()) {
+                edges_[workspace_->graph().edge_property(edge.id).id] = edge.id;
+            }
         }
 
         std::shared_ptr<const zoneout::Workspace> owned_workspace_{};
         const zoneout::Workspace *workspace_ = nullptr;
         std::unordered_map<zoneout::UUID, const zoneout::Zone *, zoneout::UUIDHash> zones_{};
         std::unordered_map<zoneout::UUID, zoneout::Graph::VertexId, zoneout::UUIDHash> nodes_{};
+        std::unordered_map<zoneout::UUID, graphix::vertex::EdgeId, zoneout::UUIDHash> edges_{};
     };
 
 } // namespace timenav
