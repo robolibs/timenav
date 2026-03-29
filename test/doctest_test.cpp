@@ -321,6 +321,24 @@ TEST_CASE("coordinator scaffold can be default constructed or bound to an index"
     CHECK(coordinator.claim_manager().index() == &index);
 }
 
+TEST_CASE("vda order types expose typed defaults") {
+    const timenav::vda::OrderNode node{};
+    const timenav::vda::OrderEdge edge{};
+    const timenav::vda::Order order{};
+
+    CHECK(node.node_id.empty());
+    CHECK(node.sequence_id.empty());
+    CHECK_FALSE(node.released);
+    CHECK(edge.edge_id.empty());
+    CHECK(edge.start_node_id.empty());
+    CHECK(edge.end_node_id.empty());
+    CHECK_FALSE(edge.released);
+    CHECK(order.order_id.empty());
+    CHECK(order.order_update_id == 0);
+    CHECK(order.nodes.empty());
+    CHECK(order.edges.empty());
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};
