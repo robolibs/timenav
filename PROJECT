@@ -18,16 +18,19 @@
 # Lines starting with # are comments
 # ==============================================================================
 
-templar
+timenav
 0.0.1
 
 [lib]
-echo|https://github.com/bresilla/echo.git|0.0.25
-scan|https://github.com/bresilla/scan.git|0.0.10
 datapod|https://github.com/robolibs/datapod.git|0.0.41
+optinum|https://github.com/robolibs/optinum.git|0.0.18
+graphix|https://github.com/robolibs/graphix.git|0.0.9
+concord|https://github.com/robolibs/concord.git|0.0.10
+zoneout|https://github.com/robolibs/zoneout.git|0.0.7
+entropy|https://github.com/robolibs/entropy.git|0.0.7
 
 [example]
-# pkg::rerun_sdk
+pkg::rerun_sdk
 
 [test]
 doctest|https://github.com/doctest/doctest.git|v2.4.12

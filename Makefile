@@ -136,7 +136,7 @@ $(info ------------------------------------------)
 # ==================================================================================================
 build:
 	@echo "Running clang-format on source files..."
-	@find ./src ./include -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | xargs clang-format -i
+	@find ./src ./include \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" \) 2>/dev/null | xargs -r clang-format -i
 ifeq ($(BUILD_SYSTEM),cmake)
 	@if [ ! -d "$(BUILD_DIR)" ]; then \
 		echo "Build directory doesn't exist, running config first..."; \
