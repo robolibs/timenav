@@ -387,6 +387,35 @@ TEST_CASE("vda response types expose typed defaults") {
     CHECK_FALSE(response.description.has_value());
 }
 
+TEST_CASE("vda adapter scaffold is default constructible") {
+    const timenav::vda::Adapter adapter{};
+    (void)adapter;
+    CHECK(true);
+}
+
+TEST_CASE("vda adapter maps route plans to order-compatible objects") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+    REQUIRE(route_plan.is_ok());
+
+    const timenav::vda::Adapter adapter{};
+    const auto order = adapter.order_from_route(route_plan.value());
+
+    CHECK(order.order_id == fixture.node_c_id.toString());
+    REQUIRE(order.nodes.size() == 3);
+    REQUIRE(order.edges.size() == 2);
+    CHECK(order.nodes[0].node_id == fixture.node_a_id.toString());
+    CHECK(order.nodes[1].sequence_id == "1");
+    CHECK(order.edges[0].edge_id == fixture.edge_ab_id.toString());
+    CHECK(order.edges[0].start_node_id == fixture.node_a_id.toString());
+    CHECK(order.edges[0].end_node_id == fixture.node_b_id.toString());
+}
+
 TEST_CASE("coordinator registers and updates robot state") {
     const auto fixture = make_test_workspace();
     const timenav::WorkspaceIndex index{fixture.workspace};

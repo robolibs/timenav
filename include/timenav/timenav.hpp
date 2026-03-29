@@ -8,6 +8,7 @@
 #include "timenav/ids.hpp"
 #include "timenav/robot_state.hpp"
 #include "timenav/route.hpp"
+#include "timenav/vda/adapter.hpp"
 #include "timenav/vda/connection.hpp"
 #include "timenav/vda/factsheet.hpp"
 #include "timenav/vda/instant_actions.hpp"
