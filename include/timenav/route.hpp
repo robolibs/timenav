@@ -353,4 +353,91 @@ namespace timenav {
         return dp::Result<dp::f64>::ok(total_cost);
     }
 
+    inline dp::Result<dp::Vector<zoneout::UUID>>
+    extract_traversed_edge_ids(const WorkspaceIndex &index, const dp::Vector<zoneout::UUID> &route_nodes) {
+        dp::Vector<zoneout::UUID> traversed_edge_ids;
+
+        if (route_nodes.size() < 2) {
+            return dp::Result<dp::Vector<zoneout::UUID>>::ok(traversed_edge_ids);
+        }
+
+        for (dp::u64 i = 1; i < route_nodes.size(); ++i) {
+            const auto *edge_data = index.edge_between(route_nodes[i - 1], route_nodes[i]);
+            if (edge_data == nullptr) {
+                return dp::Result<dp::Vector<zoneout::UUID>>::err(
+                    dp::Error::not_found("route references adjacent nodes without a graph edge"));
+            }
+            traversed_edge_ids.push_back(edge_data->id);
+        }
+
+        return dp::Result<dp::Vector<zoneout::UUID>>::ok(traversed_edge_ids);
+    }
+
+    inline dp::Result<dp::Vector<zoneout::UUID>>
+    extract_traversed_zone_ids(const WorkspaceIndex &index, const dp::Vector<zoneout::UUID> &route_nodes) {
+        dp::Vector<zoneout::UUID> traversed_zone_ids;
+        std::unordered_set<zoneout::UUID, zoneout::UUIDHash> seen_zone_ids;
+
+        for (const auto &node_id : route_nodes) {
+            for (const auto *zone : index.zones_of_node(node_id)) {
+                if (zone != nullptr && seen_zone_ids.insert(zone->id()).second) {
+                    traversed_zone_ids.push_back(zone->id());
+                }
+            }
+        }
+
+        const auto traversed_edges = extract_traversed_edge_ids(index, route_nodes);
+        if (traversed_edges.is_err()) {
+            return dp::Result<dp::Vector<zoneout::UUID>>::err(traversed_edges.error());
+        }
+
+        for (const auto &edge_id : traversed_edges.value()) {
+            for (const auto *zone : index.zones_of_edge(edge_id)) {
+                if (zone != nullptr && seen_zone_ids.insert(zone->id()).second) {
+                    traversed_zone_ids.push_back(zone->id());
+                }
+            }
+        }
+
+        return dp::Result<dp::Vector<zoneout::UUID>>::ok(traversed_zone_ids);
+    }
+
+    inline dp::Result<RoutePlan> build_route_plan(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
+                                                  const zoneout::UUID &goal_node_id,
+                                                  const dp::Vector<zoneout::UUID> &route_nodes) {
+        RoutePlan plan{};
+        plan.start_node_id = start_node_id;
+        plan.goal_node_id = goal_node_id;
+        plan.traversed_node_ids = route_nodes;
+
+        const auto traversed_edges = extract_traversed_edge_ids(index, route_nodes);
+        if (traversed_edges.is_err()) {
+            return dp::Result<RoutePlan>::err(traversed_edges.error());
+        }
+        plan.traversed_edge_ids = traversed_edges.value();
+
+        const auto traversed_zones = extract_traversed_zone_ids(index, route_nodes);
+        if (traversed_zones.is_err()) {
+            return dp::Result<RoutePlan>::err(traversed_zones.error());
+        }
+        plan.traversed_zone_ids = traversed_zones.value();
+
+        const auto total_cost = accumulate_route_cost(index, route_nodes);
+        if (total_cost.is_err()) {
+            return dp::Result<RoutePlan>::err(total_cost.error());
+        }
+        plan.total_cost = total_cost.value();
+
+        for (dp::u64 i = 0; i < route_nodes.size(); ++i) {
+            RouteStep step{};
+            step.node_id = route_nodes[i];
+            if (i > 0) {
+                step.incoming_edge_id = plan.traversed_edge_ids[i - 1];
+            }
+            plan.steps.push_back(step);
+        }
+
+        return dp::Result<RoutePlan>::ok(plan);
+    }
+
 } // namespace timenav

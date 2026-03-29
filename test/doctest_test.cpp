@@ -333,6 +333,39 @@ TEST_CASE("planner penalties prefer lower-risk routes over lower raw weight rout
     CHECK(route_nodes[2] == fixture.node_d_id);
 }
 
+TEST_CASE("route extraction builds traversed nodes edges zones and steps") {
+    const auto fixture = make_test_workspace();
+    const timenav::WorkspaceIndex index{fixture.workspace};
+
+    dp::Vector<zoneout::UUID> route_nodes;
+    route_nodes.push_back(fixture.node_a_id);
+    route_nodes.push_back(fixture.node_b_id);
+    route_nodes.push_back(fixture.node_c_id);
+
+    const auto traversed_edges = timenav::extract_traversed_edge_ids(index, route_nodes);
+    const auto traversed_zones = timenav::extract_traversed_zone_ids(index, route_nodes);
+    const auto route_plan = timenav::build_route_plan(index, fixture.node_a_id, fixture.node_c_id, route_nodes);
+
+    REQUIRE(traversed_edges.is_ok());
+    REQUIRE(traversed_zones.is_ok());
+    REQUIRE(route_plan.is_ok());
+    REQUIRE(traversed_edges.value().size() == 2);
+    CHECK(traversed_edges.value()[0] == fixture.edge_ab_id);
+    CHECK(traversed_edges.value()[1] == fixture.edge_bc_id);
+    CHECK(route_plan.value().start_node_id == fixture.node_a_id);
+    CHECK(route_plan.value().goal_node_id == fixture.node_c_id);
+    REQUIRE(route_plan.value().steps.size() == 3);
+    CHECK_FALSE(route_plan.value().steps[0].incoming_edge_id.has_value());
+    REQUIRE(route_plan.value().steps[1].incoming_edge_id.has_value());
+    CHECK(route_plan.value().steps[1].incoming_edge_id.value() == fixture.edge_ab_id);
+    REQUIRE(route_plan.value().steps[2].incoming_edge_id.has_value());
+    CHECK(route_plan.value().steps[2].incoming_edge_id.value() == fixture.edge_bc_id);
+    CHECK(route_plan.value().traversed_node_ids == route_nodes);
+    CHECK(route_plan.value().traversed_edge_ids == traversed_edges.value());
+    CHECK(route_plan.value().traversed_zone_ids.size() >= 1);
+    CHECK(route_plan.value().total_cost == doctest::Approx(2.0));
+}
+
 TEST_CASE("zone policy exposes typed defaults") {
     const timenav::ZonePolicy policy{};
 
