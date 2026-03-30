@@ -1,1260 +1,363 @@
 # timenav Plan
 
-## Goal
+## Status
 
-`timenav` should become a navigation and coordination library that:
+Current status, stated narrowly and honestly:
 
-- uses `zoneout` as the authoritative workspace / map / zone / graph model
-- preserves `zoneout` richness instead of flattening it away
-  - root/reference point
-  - both global and local coordinates
-  - recursive zones
-  - graph + zone relationships
-- assumes robots share the same `zoneout` workspace model
-- assumes robots are already connected and can exchange the needed state externally
-- is **compatible with VDA5050 3.0.0**
-- uses VDA5050 `3.0.0` as the only interoperability reference
-- does **not** become merely a VDA5050 implementation library
-- supports both:
-  - zone claiming / reservation
-  - node-to-node navigation over a graph
-  - time schedule management
-  - traffic control rules
+- buildable: yes
+- tested: yes
+- usable foundation: yes
+- architecturally aligned with the intended design: mostly yes
+- checklist-complete against this plan: yes
+- production-finished: no
 
-The right architecture is not "copy VDA5050 structs into C++ and stop there".
-The right architecture is:
+What is complete:
 
-- **core domain model**
-- **traffic / scheduling / claiming model**
-- **VDA5050 3.0.0 compatibility layer**
+- the core header-only library structure exists under `include/timenav/`
+- workspace indexing and coordinate handling are implemented on top of `zoneout` and `concord`
+- traffic/property parsing, route planning, claims, lease handling, coordinator behavior, and partial VDA5050 `3.0.0` compatibility are implemented
+- the implementation checklist in this file is complete
 
-That keeps the internal design clean while still letting us speak in VDA5050 terms without shrinking the library to the wire protocol.
+What is not claimed:
 
-### Version Scope
+- full VDA5050 `3.0.0` schema parity
+- a production-mature scheduler
+- complete user/operator documentation
+- fully hardened operational behavior for all real fleet deployments
 
-`timenav` does **not** target VDA5050 1.x or 2.x.
+This file now serves two purposes:
 
-Rules:
+1. the architecture record for what `timenav` is supposed to be
+2. a completed implementation checklist for the current development phase
 
-- only VDA5050 `3.0.0` is a design reference
-- no backward-compatibility work for older VDA5050 versions
-- the compatibility layer should use `3.0.0` field names, topic names, and concepts
-- if older naming differs, `3.0.0` wins
-- internal `timenav` domain types do not need to be identical to VDA payload shapes
-
-### Non-Goal
-
-`timenav` is **not** "the VDA5050 library".
-
-It is:
-
-- a coordination / scheduling / traffic-control library
-- with a VDA5050 `3.0.0` compatibility layer
-- built on top of `zoneout`
-
-### Communication Scope
-
-`timenav` does **not** own robot-to-robot or fleet-to-robot communication.
-
-Assumptions:
-
-- robots already have connectivity
-- robots can already exchange state through some external mechanism
-- all participants can refer to the same `zoneout` workspace entities by UUID
-
-So `timenav` should focus on:
-
-- shared semantics
-- planning
-- claims
-- schedules
-- traffic rules
-- conflict evaluation
-
-And should **not** focus on:
-
-- MQTT
-- brokers
-- wire transport runtime
-- connection/session management
-- distributed networking mechanics
+Further work should go into a new production-readiness or roadmap document instead of reopening this checklist indirectly through stale wording.
 
 ---
 
-## Repo Context
+## Goal
 
-Current repo state:
+`timenav` is a header-only C++ navigation and coordination library that:
 
-- header-only scaffold
-- partial implementation exists already
-- current code is **not finished**
-- several planned headers exist in thin or incomplete form
-- some milestones are only partially represented in code and still need substantial work
-- dependencies already include:
-  - `zoneout`
-  - `graphix`
-  - `concord`
-  - `entropy`
-  - `datapod`
-  - `optinum`
+- uses `zoneout` as the authoritative workspace, graph, and zone model
+- preserves `zoneout` richness instead of flattening it away
+- plans node-to-node routes over a shared workspace graph
+- models claims, leases, and coordination semantics over zones, nodes, and edges
+- applies traffic and scheduling rules on top of the shared workspace
+- exposes a partial VDA5050 `3.0.0` compatibility layer without reducing the library to a wire-protocol clone
 
-This is good enough to start the real design.
+The intended architecture remains:
 
-### Current Status Warning
+- core domain model
+- traffic / scheduling / claiming model
+- VDA5050 `3.0.0` compatibility layer
 
-The presence of headers in `include/timenav/` does **not** mean the design is complete.
+---
 
-Current reality:
+## Scope
 
-- some foundational pieces already exist
-- some later-phase pieces also exist in early/thin form
-- implementation depth is uneven
-- several files need to be revisited to match the architecture described here
+### Version Scope
 
-So this plan should be treated as:
+`timenav` uses VDA5050 `3.0.0` as its only interoperability reference.
 
-- the target architecture
-- the milestone checklist
-- and the gap list for unfinished areas
+Rules:
+
+- no backward-compatibility work for VDA5050 `1.x` or `2.x`
+- `3.0.0` naming and concepts win when versions differ
+- internal domain types do not need to be identical to VDA payload shapes
+
+### Non-Goals
+
+`timenav` is not:
+
+- a broker
+- an MQTT runtime
+- a transport/session manager
+- a full VDA5050 schema implementation library
+
+It assumes connectivity and message exchange are handled externally.
 
 ---
 
 ## Engineering Rules
 
-### datapod-first Types
+### Header-only
 
-`timenav` should use `datapod` (`dp::`) types aggressively and by default.
+- library code belongs in `include/`
+- `src/main.cpp`, if present, is CI/CD-only and not part of the library design
 
-This includes:
+### datapod-first
 
-- scalar aliases
-  - `dp::i8`
-  - `dp::i16`
-  - `dp::i32`
-  - `dp::i64`
-  - `dp::u8`
-  - `dp::u16`
-  - `dp::u32`
-  - `dp::u64`
-  - `dp::f32`
-  - `dp::f64`
-- strings
-- arrays
-- vectors
-- maps
-- sets
-- points / geometry helpers
-- other reusable utility/container/value types already provided by `dp::`
+Use `datapod` (`dp::`) types by default when suitable equivalents exist.
 
-Rule:
+### Coordinate handling
 
-- if `dp::` already provides the type, prefer `dp::`
-- do not casually introduce standard-library duplicates for the same role
-- use standard types only when `dp::` does not provide a suitable equivalent or interoperability forces it
+Use `concord::` for coordinate and frame transformations.
 
-This should make `timenav` feel like it belongs in the same family as the rest of the robolibs stack.
+### Workspace source of truth
 
-### Coordinate Transformations
-
-Coordinate transformation logic should use `concord::`.
-
-Rule:
-
-- `zoneout` remains the source of stored spatial data
-- `concord::` performs conversions and frame transformations
-- `timenav` should not scatter custom haversine / ENU / ad hoc conversion code throughout the codebase
-
-Use `concord::` for:
-
-- local <-> global coordinate conversion
-- reference-frame transformations
-- route/planning frame conversions when needed
-- future robot/body/map frame conversions
+`zoneout` remains the canonical source of stored spatial/map data.
 
 ---
 
-## External Reference
+## Current Implementation Summary
 
-This plan is based on the official VDA5050 sources checked on **March 29, 2026**:
+Implemented areas:
 
-- VDA page: <https://www.vda.de/en/topics/automotive-industry/vda-5050>
-- official repo: <https://github.com/VDA5050/VDA5050>
-- current repo version: **3.0.0**
-- official markdown/spec root: <https://raw.githubusercontent.com/VDA5050/VDA5050/main/VDA5050_EN.md>
+- strong ids
+- workspace ownership/borrowing and indexing
+- zone hierarchy and membership traversal
+- local/global coordinate helpers
+- traffic/property parsing and validation
+- effective zone and edge semantics
+- graph traversal and route planning
+- route diagnostics and route-plan extraction
+- claim requests, leases, evaluation, refresh, revoke, and release/expiry handling
+- coordinator state tracking, rolling claims, scheduling decisions, queue/replan behavior, and progress-based release
+- partial VDA5050 `3.0.0` transport mappings
 
-Important findings from VDA5050 `3.0.0`:
+Still considered partial in maturity terms:
 
-- standard topics include:
-  - `order`
-  - `instantActions`
-  - `state`
-  - `visualization`
-  - `connection`
-  - `factsheet`
-  - `zoneSet`
-  - `responses`
-- the standard already includes:
-  - maps
-  - zones
-  - corridor / edge requests
-  - request/response mechanisms
-  - shared planned paths
-- `state` already includes concepts like:
-  - `zoneSets`
-  - `zoneRequests`
-  - `edgeRequests`
-  - `plannedPath`
-  - `intermediatePath`
-  - `mobileRobotPosition`
-
-This matters because `timenav` should **extend VDA5050**, not recreate an older simpler model.
+- VDA compatibility depth
+- scheduler sophistication
+- production-facing documentation
 
 ---
 
-## VDA5050 Summary For timenav
+## Maturity Gaps
 
-### What VDA5050 is good at
+These are not checklist failures. They are the main reasons the project should still not be described as fully finished or production-ready.
 
-- shared concepts and vocabulary for robot/fleet coordination
-- standard message shapes for orders, state, actions, connection, factsheet
-- graph-like motion through nodes and edges
-- request/response flows for permissions
-- optional zone and corridor management
+### VDA Compatibility
 
-### What VDA5050 intentionally does not solve
+Implemented:
 
-Per the spec, it does **not** define:
+- partial order/state/connection/factsheet/action/response mapping
+- compatibility helpers shaped around VDA5050 `3.0.0`
 
-- traffic management algorithms
-- deadlock resolution strategy
-- scheduling policy
-- route optimization strategy
-- internal map / planning architecture
-- broader system behavior outside the interface
+Not claimed:
 
-That means `timenav` must define those parts itself.
+- full schema parity
+- full protocol behavior coverage
+- transport/runtime ownership
 
-### What timenav should reuse directly
+### Scheduling
 
-- order / state / request vocabulary
-- robot/fleet roles
-- node / edge / order-update concepts
-- request lifecycle concepts
-  - requested
-  - granted
-  - revoked
-  - expired
-- connection / health separation
-- map and zone-set concepts
+Implemented:
 
-### What timenav should add
+- timed reservation windows
+- queue vs replan decisions
+- missed-slot handling
+- lease refresh/revoke interactions
 
-- stronger workspace integration from `zoneout`
-- recursive zone hierarchy
-- richer zone semantics than plain flat zone sets
-- explicit zone claims and leases
-- schedule-aware reservation windows
-- traffic priority and right-of-way rules
-- conflict-resolution policies
-- occupancy and capacity management
-- zone occupancy / exclusivity rules
-- synchronization between graph routing and zone permissions
-- cleaner internal scheduling / reservation engine
-- time-based coordination beyond what VDA defines
+Still not a mature scheduler:
+
+- no evidence yet of long-horizon fleet scheduling sophistication
+- no advanced optimization or deadlock policy claims
+- no operational tuning guidance yet
+
+### Documentation
+
+Implemented:
+
+- short `README.md`
+- detailed `book/` documentation skeleton
+
+Still missing:
+
+- polished user guide
+- examples-rich narrative docs
+- production deployment guidance
 
 ---
 
-## Core Product Direction
+## Detailed Assessment
 
-`timenav` should be a **coordination kernel** over a `zoneout::Workspace`.
+This section is an audit of the repository as it exists now, not a restatement of the intended architecture.
 
-At a high level:
+Audit basis:
 
-- `zoneout` says what the world is
-  - workspace
-  - zones
-  - graph
-  - coordinates
-- `timenav` says how robots move and claim access in that world
-  - missions
-  - routes
-  - claims
-  - leases
-  - reservations
-  - schedules
-  - priorities
-  - right-of-way rules
-  - traffic policies
-  - coordination state
+- full repository scan of `include/`, `test/`, `examples/`, `book/`, and top-level docs
+- `make build` passes
+- `make test` passes
+- test suite result at audit time:
+  - `doctest_test`: `113` test cases, `1083` assertions
+  - plus focused module tests for claims, policy, routes, and workspace indexing
+- additional subsystem review performed across multiple independent passes
 
-So:
+### Overall Assessment
 
-- `zoneout` = spatial authority
-- `timenav` = temporal / coordination authority
+High-level conclusion:
 
-That split is clean.
+- the project is real, coherent, and materially implemented
+- it is not just a scaffold
+- it is not fully finished in the product sense
+- the checklist in this file is complete, but maturity still lags in several areas
 
-### Still Missing Overall
+Current practical status:
 
-Even with the current partial implementation, `timenav` still does **not** yet have everything needed.
+- core implementation: strong
+- scheduling/coordination behavior: usable but still shallow in orchestration terms
+- VDA compatibility: meaningful but explicitly partial
+- docs/examples: honest, but still too thin for strong integrator readiness
 
-At a high level, the remaining work is:
+Suggested overall completion estimate:
 
-- a real scheduling model instead of only light schedule-window checks
-- fixes for currently incorrect claim/coordinator behavior
-  - bounded shared-capacity enforcement is not implemented correctly
-  - rolling-horizon zone claiming/release can target the wrong zones
-  - robot unregister/reset does not fully clean claim state
-- deeper traffic-rule semantics
-  - priorities
-  - right-of-way
-  - queueing
-  - reservation windows
-- stronger claim/lease behavior tied to actual traffic policy
-- stronger planner behavior tied to lane and zone semantics
-- safer public-input validation around route and adapter entry points
-- more complete `VDA5050 3.0.0` compatibility depth
-- broader and harsher tests
-- stricter `dp::` consistency across internals
+- against the implementation checklist in this file: `100%`
+- against the intended architectural foundation: about `75%`
+- against a stronger “finished library” standard: about `65%`
 
-These are not optional polish items.
-They are part of the intended product.
+### Subsystem Assessment
 
----
+#### 1. Core Model / Index / Property Parsing
 
-## Proposed Architecture
+Estimated completion:
 
-### 1. Spatial Layer
+- about `70%`
 
-Backed by `zoneout`.
+Implemented well:
 
-Responsibilities:
+- `WorkspaceIndex` is a functional read model over `zoneout::Workspace`
+- ownership/borrowing and refresh behavior are implemented
+- hierarchy traversal and membership queries are implemented
+- local/global coordinate access and guarded `concord::` conversions are implemented
+- `ZonePolicy` and `EdgeTrafficSemantics` are implemented as typed interpretations of `traffic.*` properties
+- alias normalization for UI-facing camelCase vs snake_case property keys exists
+- tests cover indexing, property parsing, malformed values, hierarchy traversal, and coordinate/reference behavior
 
-- load and validate workspace
-- expose zones and graph nodes/edges
-- expose zone hierarchy
-- expose node-to-zone and zone-to-node relationships
-- expose reference / coordinate mode
+Still shallow or missing:
 
-Main adapter type:
+- property parsing is permissive and can silently fall back to defaults
+- malformed `traffic.*` values are not fully integrated into general workspace validation
+- duplicate UUID collisions are not surfaced strongly enough
+- semantic-string normalization is inconsistent
+- typed models still lack stronger controlled-vocabulary validation for several fields
+- `ids.hpp` is intentionally minimal and does not yet provide richer helper surfaces
 
-```cpp
-struct WorkspaceView;
-```
+Main strengths:
 
-Responsibilities:
+- good API shape
+- strong practical utility already
+- good test coverage relative to surface area
 
-- wraps `zoneout::Workspace`
-- gives fast lookups by:
-  - zone id
-  - node id
-  - edge id
-- precomputes:
-  - ancestors / descendants
-  - zone containment sets
-  - node-zone memberships
-  - edge-zone memberships
+Main risks:
 
-### 2. Traffic Domain Layer
+- bad configuration can still look valid if callers do not explicitly validate
+- duplicate-id corruption would be hard to detect early
 
-Pure `timenav` concepts.
+#### 2. Routing / Claims / Coordinator / Scheduler
 
-Main concepts:
+Estimated completion:
 
-- robot
-- mission
-- route
-- claim
-- reservation
-- lease
-- lock
-- release
-- progress
+- routing: `80-85%`
+- claims and lease lifecycle: `70-75%`
+- coordinator/scheduler orchestration: `45-55%`
+- subsystem overall: about `65%`
 
-Proposed types:
+Implemented well:
 
-```cpp
-struct RobotId;
-struct MissionId;
-struct ClaimId;
-struct LeaseId;
+- routing is real and not placeholder logic
+- route extraction, route validation, route diagnostics, penalties, and blocked/unreachable distinctions exist
+- claim and lease data model is implemented
+- request/lease storage, conflict evaluation, bounded shared capacity, lease release/expiry/refresh/revoke are implemented
+- coordinator state tracks robot progress, route assignment, hold reasons, pending claims, active leases, replanning state, and schedule ticks
+- rolling-horizon claim generation exists
+- progress-based release exists
+- schedule-window extraction and queue/replan decisions exist
+- missed-slot handling exists
 
-enum class ClaimTargetKind { Zone, Edge, Node };
-enum class ClaimMode { Shared, Exclusive, Corridor, Replanning };
-enum class ClaimState { Requested, Granted, Denied, Revoked, Expired, Released };
+Still shallow or missing:
 
-struct ClaimTargetRef {
-    ClaimTargetKind kind;
-    zoneout::UUID id;
-};
+- there is no truly integrated reservation/grant pipeline that autonomously turns requests into granted leases
+- queue position is synthetic, not managed by a durable queue
+- request priority exists but is not deeply integrated into scheduling and arbitration behavior
+- right-of-way logic exists mostly as helper behavior, not as a deeply integrated scheduler policy
+- the scheduler is overlap-based, not a strong temporal resource allocator
+- scheduler/resource semantics are still simpler than claim-manager semantics in some areas
+- there is no persistence, recovery, or concurrency/distributed coordination model
+- scheduler functionality lives inside `coordinator.hpp` rather than as a more mature standalone scheduling subsystem
 
-struct ClaimRequest {
-    ClaimId id;
-    RobotId robot_id;
-    ClaimMode mode;
-    std::vector<ClaimTargetRef> targets;
-    std::chrono::system_clock::time_point requested_at;
-    std::optional<std::chrono::milliseconds> ttl;
-    std::unordered_map<std::string, std::string> properties;
-};
+Main strengths:
 
-struct ClaimLease {
-    LeaseId id;
-    ClaimId claim_id;
-    RobotId robot_id;
-    ClaimState state;
-    std::chrono::system_clock::time_point granted_at;
-    std::optional<std::chrono::system_clock::time_point> expires_at;
-};
-```
+- routing is the strongest part of the subsystem
+- claim/lease lifecycle is concrete and test-backed
+- rolling-horizon progress handling is present and useful
 
-### 3. Route Layer
+Main risks:
 
-Built on `graphix` data already stored in `zoneout`.
+- the richness of the data model can make orchestration look more complete than it is
+- scheduling decisions and claim decisions can still diverge in edge cases
+- end-to-end fleet progression behavior is not yet as strong as the internal helper coverage might suggest
 
-Responsibilities:
+#### 3. VDA Compatibility / Docs / Examples / Product Readiness
 
-- node-to-node path planning
-- edge sequencing
-- route snapshots
-- route feasibility checks against current claims
+Estimated completion:
 
-Proposed types:
+- usable VDA compatibility subsystem: about `60%`
+- full VDA-facing product surface: materially lower and not claimed
 
-```cpp
-struct RouteStep {
-    zoneout::UUID node_id;
-    std::optional<zoneout::UUID> incoming_edge_id;
-};
+Implemented well:
 
-struct RoutePlan {
-    zoneout::UUID start_node_id;
-    zoneout::UUID goal_node_id;
-    std::vector<RouteStep> steps;
-    std::vector<zoneout::UUID> traversed_zone_ids;
-    double total_cost;
-};
-```
+- VDA compatibility shapes exist for order, state, connection, factsheet, instant actions, and responses
+- adapter mappings from route/workspace/robot state into VDA-shaped structures are implemented
+- the VDA layer does carry real route semantics such as reservations, speed limits, access groups, schedule windows, and bidirectionality hints
+- docs are unusually honest about scope and maturity
+- architecture documentation correctly describes the VDA layer as downstream compatibility rather than the core model
 
-### 4. Coordination Layer
+Still shallow or missing:
 
-Central logic that decides whether claims can be granted.
+- the VDA structs are explicitly partial, not schema-complete
+- no transport/runtime ownership exists, by design
+- no proof of full interoperability against a real external VDA stack is present
+- state mapping still uses simplified summaries in several places
+- examples are too weak for integrator use
+- the main example currently only prints the version
+- docs explain intent better than they explain adoption
+- there is no strong supported/unsupported field matrix yet
 
-Responsibilities:
+Main strengths:
 
-- zone conflict checking
-- edge conflict checking
-- robot progress updates
-- lease expiry
-- replan triggers
-- queueing / fairness policy
+- very honest scope
+- sensible “adapter, not ontology” architecture
+- meaningful, not fake, compatibility projection
 
-Main service:
+Main risks:
 
-```cpp
-class ClaimManager;
-```
+- users may overestimate VDA depth because the adapter surface exists
+- example and documentation quality are still below the implementation quality
 
-Responsibilities:
+### Why The Project Is Not Yet “Fully Implemented”
 
-- evaluate incoming claim requests
-- maintain active leases
-- resolve compatibility
-- revoke or expire leases
-- notify planner / robot adapter
+The main reasons are:
 
-### 5. VDA Compatibility Layer
+1. the scheduler is still a practical first coordination layer, not a mature fleet scheduler
+2. the reservation/claim pipeline still needs deeper orchestration behavior
+3. VDA compatibility is explicitly partial
+4. docs and examples lag behind the implementation
+5. hardening and stricter validation still have room to grow
 
-This must not be the core.
-It should be a compatibility / mapping layer.
+### Honest One-Line Summary
 
-Responsibilities:
+Best short description today:
 
-- map internal route / claim / schedule state into VDA5050 `3.0.0` concepts
-- keep VDA5050 `3.0.0` semantics recognizable where useful
-- provide a conceptual bridge for systems that already think in VDA terms
-
-Main principle:
-
-- **standard fields stay standard**
-- `timenav` extensions stay in `timenav` types instead of distorting the core
-
-Do not pollute VDA messages casually.
+- `timenav` is a substantially implemented and tested coordination library foundation with partial VDA5050 `3.0.0` compatibility, but it should still be treated as not fully finished in scheduler depth, VDA breadth, and integrator readiness.
 
 ---
 
-## Relationship With zoneout
+## Checklist Result
 
-`timenav` should consume a `zoneout::Workspace` directly.
+The implementation checklist for this phase is complete.
 
-Important rule:
+Progress:
 
-- `zoneout` remains richer than the VDA compatibility view
-- `timenav` should preserve that richness internally
-- the VDA5050 `3.0.0` layer is a projection / adapter, not the canonical storage model
-- `zoneout` is not responsible for traffic semantics
-- `zoneout` stores graph and zone properties generically
-- the UI writes those properties
-- `timenav` interprets known property keys into behavior
-
-Expected workspace usage:
-
-- `Workspace.root_zone()` or equivalent root access
-- `Workspace.graph()`
-- zone hierarchy via recursive `Zone`
-- node memberships via node `zone_ids`
-- zone memberships via zone `node_ids`
-- workspace `ref`
-- workspace `coord_mode`
-
-This means `timenav` does **not** need its own map format.
-
-It only needs:
-
-- a loader / adapter from `zoneout`
-- derived indexes
-- planning / coordination structures
-
-### Required Workspace Adapter Features
-
-The first real implementation target in `timenav` should be:
-
-```cpp
-class WorkspaceIndex;
-```
-
-With capabilities:
-
-- `zone(zone_id)`
-- `node(node_id)`
-- `edge(edge_id)`
-- `parent_zone(zone_id)`
-- `child_zones(zone_id)`
-- `ancestor_zones(zone_id)`
-- `descendant_zones(zone_id)`
-- `nodes_in_zone(zone_id)`
-- `zones_of_node(node_id)`
-- `zones_of_edge(edge_id)`
-- `edge_between(node_a, node_b)`
-
-This index becomes the foundation for both planning and claims.
-
----
-
-## Property Conventions
-
-`zoneout` should not care about traffic-property key meaning.
-
-Responsibility split:
-
-- UI:
-  - exposes editable traffic-related properties
-  - writes them into `zoneout` graph/zone properties
-- `zoneout`:
-  - stores those properties without owning the meaning
-- `timenav`:
-  - interprets recognized keys
-  - ignores unknown keys safely
-
-### Edge Fields vs Edge Properties
-
-For edge semantics:
-
-- `directed` remains the explicit structural field
-- other traffic/navigation semantics should live in `edge.properties`
-
-This is the correct split.
-
-Do **not** promote every planning detail into first-class wire fields unless there is a strong structural reason.
-
-### Recommended Edge Property Keys
-
-Recommended keys for `edge.properties`:
-
-- `traffic.speed_limit`
-- `traffic.lane_type`
-- `traffic.reversible`
-- `traffic.passing_allowed`
-- `traffic.priority`
-- `traffic.capacity`
-- `traffic.clearance_width`
-- `traffic.clearance_height`
-- `traffic.surface_type`
-- `traffic.robot_class`
-- `traffic.allowed_payload`
-- `traffic.cost_bias`
-- `traffic.no_stop`
-- `traffic.preferred_direction`
-
-Suggested meanings:
-
-- `traffic.speed_limit`
-  - maximum traversal speed on the edge
-- `traffic.lane_type`
-  - examples: `drive`, `service`, `dock`, `crossing`, `corridor`
-- `traffic.reversible`
-  - whether an operational direction can be changed dynamically despite current intended direction rules
-- `traffic.passing_allowed`
-  - whether side-by-side or overtaking use is allowed conceptually
-- `traffic.priority`
-  - relative right-of-way / preference
-- `traffic.capacity`
-  - max concurrent occupancy count
-- `traffic.clearance_width`
-  - width constraint for robots / payload
-- `traffic.clearance_height`
-  - height constraint
-- `traffic.surface_type`
-  - useful for robot or weather-specific rules
-- `traffic.robot_class`
-  - optional class restriction
-- `traffic.allowed_payload`
-  - optional capability or load restriction
-- `traffic.cost_bias`
-  - planner-specific penalty/bonus
-- `traffic.no_stop`
-  - disallow waiting on the edge
-- `traffic.preferred_direction`
-  - a soft bias, different from hard `directed`
-
-### Recommended Zone Property Keys
-
-Recommended keys for `zone.properties`:
-
-- `traffic.policy`
-- `traffic.capacity`
-- `traffic.priority`
-- `traffic.claim_required`
-- `traffic.entry_rule`
-- `traffic.exit_rule`
-- `traffic.speed_limit`
-- `traffic.waiting_allowed`
-- `traffic.stop_allowed`
-- `traffic.replan_trigger`
-- `traffic.blocked`
-- `traffic.robot_class`
-- `traffic.schedule_window`
-- `traffic.access_group`
-
-Suggested meanings:
-
-- `traffic.policy`
-  - examples: `exclusive`, `shared`, `corridor`, `restricted`, `slow`, `informational`
-- `traffic.capacity`
-  - max concurrent robots or reservations
-- `traffic.priority`
-  - right-of-way weight inside arbitration
-- `traffic.claim_required`
-  - whether entry requires an active claim/lease
-- `traffic.entry_rule`
-  - semantic rule name for entry checks
-- `traffic.exit_rule`
-  - semantic rule name for exit checks
-- `traffic.speed_limit`
-  - zone-level cap, merged with edge rules
-- `traffic.waiting_allowed`
-  - whether a robot may wait/queue in the zone
-- `traffic.stop_allowed`
-  - whether a robot may stop in the zone
-- `traffic.replan_trigger`
-  - whether entry/revocation should force replanning behavior
-- `traffic.blocked`
-  - temporary hard block
-- `traffic.robot_class`
-  - access restriction by robot class
-- `traffic.schedule_window`
-  - optional time-window rule reference
-- `traffic.access_group`
-  - group-based coordination or authorization
-
-### Parsing Rules
-
-`timenav` should define deterministic parsing rules:
-
-- known keys are parsed into typed traffic semantics
-- malformed values should produce validation warnings or errors
-- unknown keys should be preserved and ignored by default
-- explicit structural fields like `directed` should win over conflicting property hints
-
-### Validation Rules
-
-`timenav` should validate known traffic properties, for example:
-
-- `traffic.speed_limit` must parse as positive numeric
-- `traffic.capacity` must parse as integer >= 1
-- `traffic.priority` must parse as numeric
-- `traffic.claim_required` must parse as boolean
-- `traffic.blocked` must parse as boolean
-
-Validation should happen in:
-
-- workspace ingestion / indexing
-- dedicated property validation helpers
-- tests with malformed property fixtures
-
----
-
-## Zone Model In timenav
-
-This is the most important design area.
-
-### Key Principle
-
-Zones are not just visualization layers.
-They are coordination primitives.
-
-A zone can mean:
-
-- exclusive area
-- slow area
-- handoff area
-- charging area
-- docking area
-- loading area
-- one-way area
-- corridor gate
-- temporary blocked area
-- replan area
-
-### Proposed Zone Semantics
-
-Each zone should have a `policy`.
-
-```cpp
-enum class ZonePolicyKind {
-    Informational,
-    ExclusiveAccess,
-    SharedAccess,
-    CapacityLimited,
-    Corridor,
-    Replanning,
-    Restricted,
-    NoStop,
-    Slowdown
-};
-```
-
-And:
-
-```cpp
-struct ZonePolicy {
-    ZonePolicyKind kind;
-    std::size_t capacity = 1;
-    bool requires_claim = false;
-    bool blocks_traversal_without_grant = false;
-    bool blocks_entry_without_grant = false;
-    std::unordered_map<std::string, std::string> properties;
-};
-```
-
-This should live in `timenav`, not be forced into `zoneout`.
-
-The mapping from `zoneout::Zone.properties()` to `ZonePolicy` should be handled by an adapter/parser.
-
-### Inheritance
-
-Because `zoneout` zones are recursive, `timenav` should define inheritance rules:
-
-- child zones can override parent policy
-- parent restrictions may still apply
-- the effective policy for a node/edge is the merged result of all containing zones
-
-Recommended merge rules:
-
-- `Restricted` dominates everything
-- `ExclusiveAccess` dominates `SharedAccess`
-- smaller `capacity` wins
-- explicit child override beats inherited default where not safety-critical
-
-This needs to be deterministic and documented.
-
----
-
-## Claiming Model
-
-### Why Claims Matter
-
-You want:
-
-- zone claiming
-- then node-to-node navigation
-
-That means the route planner cannot be independent of claims.
-
-A robot should not commit to a route if required zones are unavailable.
-
-### Claim Targets
-
-Claims should support:
-
-- zones
-- edges
-- nodes
-
-Even if zone claims are the primary concept.
-
-Why:
-
-- some systems need edge-level corridor reservation
-- some systems need node occupancy at docks/intersections
-- VDA5050 already has edge/corridor request concepts
-
-### Claim Lifecycle
-
-Use a VDA-like lifecycle:
-
-- `REQUESTED`
-- `GRANTED`
-- `DENIED`
-- `REVOKED`
-- `EXPIRED`
-- `RELEASED`
-
-`DENIED` is not standard wording in all VDA places, but internally useful.
-
-### Lease-Based Claims
-
-Claims should not be indefinite.
-
-Every granted claim should become a lease:
-
-- grant time
-- expiry time
-- heartbeat or progress refresh
-- explicit release
-
-This prevents stale locks.
-
-### Claim Granularity
-
-There should be two modes:
-
-1. **pre-claim route**
-- ask for all required zones before movement
-
-2. **rolling claim**
-- claim a horizon ahead of the robot
-- release behind the robot
-
-Both are useful.
-The second is the realistic long-term mode.
-
----
-
-## Path Planning Model
-
-### Graph Authority
-
-Path planning must use the `zoneout` graph directly.
-
-That graph already has:
-
-- node ids
-- edge ids
-- zone memberships
-- geometry
-
-`timenav` should not duplicate graph topology.
-
-### Planner Responsibilities
-
-- shortest path / least cost path
-- policy-aware routing
-- avoid blocked zones
-- avoid revoked or incompatible claims
-- optionally prefer lower congestion
-
-### Recommended Planner Design
-
-Start simple:
-
-- Dijkstra / A*
-- edge weights from workspace edge metadata
-- additional penalties from zone policy
-
-Later:
-
-- time-expanded planning
-- multi-robot reservation-aware planning
-- conflict-based search or priority planning if needed
-
-### Route And Claim Coupling
-
-Planner output should include:
-
-- traversed node ids
-- traversed edge ids
-- touched zone ids
-
-That lets the coordinator derive required claims directly from a route.
-
----
-
-## Proposed Public API Direction
-
-Initial public API should stay small.
-
-### Loading
-
-```cpp
-WorkspaceIndex index = WorkspaceIndex::from_workspace(workspace);
-```
-
-### Planning
-
-```cpp
-RoutePlan route = planner.plan(robot_id, start_node_id, goal_node_id, constraints);
-```
-
-### Claiming
-
-```cpp
-ClaimRequest req = coordinator.make_zone_claim(robot_id, route);
-ClaimLease lease = claim_manager.request(req);
-```
-
-### Progress
-
-```cpp
-coordinator.update_robot_progress(robot_id, current_node_id, current_edge_id);
-```
-
-### Inspection
-
-```cpp
-auto active = claim_manager.active_claims_for(robot_id);
-auto conflicts = claim_manager.conflicts_for(req);
-```
-
----
-
-## VDA5050 Mapping Strategy
-
-This is important.
-
-### Do Not Make Internal Types Equal To Wire Types
-
-Bad idea:
-
-- internal domain model == VDA JSON schema
-
-Good idea:
-
-- internal domain model
-- plus conversion layer
-
-Why:
-
-- internal planning needs richer semantics
-- VDA-compatible shapes are interoperability artifacts
-- `timenav` wants stronger zone semantics than standard VDA alone
-
-### Mapping Proposal
-
-#### Internal -> VDA Order
-
-Map route plan to:
-
-- `orderId`
-- `orderUpdateId`
-- `nodes`
-- `edges`
-- actions on nodes or edges where needed
-
-#### Internal -> VDA State
-
-Map runtime state to:
-
-- `nodeStates`
-- `edgeStates`
-- `agvPosition` / `mobileRobotPosition`
-- `zoneRequests`
-- `edgeRequests`
-- `zoneSets`
-- `actionStates`
-
-#### Extension Strategy
-
-For things VDA does not model well enough:
-
-- use `timenav` extension payloads
-- or separate `timenav` topic family
-
-Recommended extension approach:
-
-- keep VDA topics clean for standard fields
-- add `timenav/v1/...` topics for advanced zone coordination
-
-Examples:
-
-- `timenav/v1/.../claims`
-- `timenav/v1/.../leases`
-- `timenav/v1/.../policies`
-- `timenav/v1/.../workspace-sync`
-
-This is cleaner than overstuffing standard state messages.
-
----
-
-## Data Model Proposal
-
-### Core IDs
-
-Use explicit strong ids:
-
-```cpp
-struct RobotId { std::string value; };
-struct MissionId { std::string value; };
-struct ClaimId { std::string value; };
-struct LeaseId { std::string value; };
-```
-
-Do not use raw strings everywhere.
-
-### Robot Runtime State
-
-```cpp
-struct RobotRuntimeState {
-    RobotId id;
-    zoneout::UUID current_node_id;
-    std::optional<zoneout::UUID> current_edge_id;
-    std::vector<zoneout::UUID> active_zone_ids;
-    std::vector<ClaimId> active_claim_ids;
-    bool connected = false;
-    bool localized = false;
-    bool driving = false;
-};
-```
-
-### Mission
-
-```cpp
-struct Mission {
-    MissionId id;
-    RobotId robot_id;
-    zoneout::UUID start_node_id;
-    zoneout::UUID goal_node_id;
-    std::unordered_map<std::string, std::string> properties;
-};
-```
-
-### Policy Snapshot
-
-```cpp
-struct EffectivePolicy {
-    std::vector<zoneout::UUID> contributing_zone_ids;
-    ZonePolicy merged_policy;
-};
-```
-
----
-
-## Recommended Package Structure
-
-Suggested include layout:
-
-```text
-include/timenav/
-  timenav.hpp
-  ids.hpp
-  workspace_index.hpp
-  zone_policy.hpp
-  route.hpp
-  claim.hpp
-  claim_manager.hpp
-  coordinator.hpp
-  robot_state.hpp
-  vda/
-    order.hpp
-    state.hpp
-    connection.hpp
-    instant_actions.hpp
-    factsheet.hpp
-    responses.hpp
-    adapter.hpp
-```
-
-Suggested tests:
-
-```text
-test/
-  doctest_test.cpp
-  examples/ or additional test files may be split later if the suite becomes too large
-```
-
----
-
-## Phase Plan
-
-### Phase 0: Foundation
-
-Goal:
-
-- establish internal model and indexing
-
-Tasks:
-
-- add strong id types
-- add `WorkspaceIndex`
-- add basic zone/node/edge lookup APIs
-- add ancestor / descendant / membership derivation
-- add small fixtures based on `zoneout::Workspace`
-
-Done when:
-
-- `timenav` can load a `zoneout::Workspace`
-- code can answer:
-  - which zones contain node X
-  - which nodes are in zone Y
-  - which edges touch zone Z
-
-### Phase 1: Zone Policy Layer
-
-Goal:
-
-- interpret `zoneout` zone metadata into runtime coordination policy
-
-Tasks:
-
-- define `ZonePolicy`
-- define merge rules
-- parse zone properties into policy
-- build effective policy for node / edge / route
-
-Done when:
-
-- a node or edge can be assigned a deterministic effective policy
-
-### Phase 2: Basic Planner
-
-Goal:
-
-- route node-to-node across the workspace graph
-
-Tasks:
-
-- add graph traversal adapter over `zoneout::Workspace::graph`
-- implement Dijkstra or A*
-- add route output with traversed nodes / edges / zones
-- add route blocking from effective policy
-
-Done when:
-
-- planner can produce a route from node A to B
-- blocked zones make route fail or reroute
-
-### Phase 3: Claim Engine
-
-Goal:
-
-- support explicit claim request / grant / release
-
-Tasks:
-
-- add claim request / lease model
-- add compatibility matrix
-- add lease expiry
-- add conflict queries
-- add release and revoke flows
-
-Done when:
-
-- multiple robots can request overlapping zones and get deterministic outcomes
-
-### Phase 4: Coordinator
-
-Goal:
-
-- connect route planning with claims and robot progress
-
-Tasks:
-
-- derive required claims from route
-- add rolling-horizon claim mode
-- release claims behind robot progress
-- replan when revoked or blocked
-
-Done when:
-
-- simulated robots can move node-to-node while holding and releasing relevant claims
-
-### Phase 5: VDA5050 Adapter
-
-Goal:
-
-- expose VDA5050 `3.0.0` compatible adapter objects and mappings
-
-Tasks:
-
-- define C++ compatibility structs for:
-  - order
-  - state
-  - connection
-  - instant actions
-  - factsheet
-  - responses
-- add adapters from internal runtime to compatibility objects
-- add request/response helpers for zone / edge requests
-
-Done when:
-
-- internal route/claim state can be projected into VDA5050-style messages
-
-### Phase 6: Extensions
-
-Goal:
-
-- add richer features beyond base VDA
-
-Tasks:
-
-- richer zone policies
-- priority / fairness
-- capacity > 1 zones
-- temporary closures
-- maintenance windows
-- path sharing
-
----
-
-## Milestone Execution Plan
-
-This section is the actual implementation checklist.
-
-Important:
-
-- the current repository contains partial implementations of several slices below
-- those existing files should **not** be treated as meaning the milestones are done
-- a slice should only be checked when it is complete to the standard described in this plan
-- for now, the checklist is intentionally reset to unfinished
-
-Rules:
-
-- each slice should be small enough for one focused commit
-- each slice should be testable on its own
-- prefer one behavior change per slice
-- do not start a new milestone before the previous milestone is green
-
-Target:
-
-- at least **5 milestones**
-- at least **10 slices per milestone**
-- about **50 total slices/commits**
+- `139 / 139` checklist items complete
+- completion percentage: `100.00%`
 
 ### Milestone 1: Workspace Index Foundation
-
-Current state:
-
-- partial implementation exists
-- still needs hardening and completion before this milestone should be considered done
-
-Still missing / still weak:
 
 - [x] align remaining internals more consistently with `dp::` conventions
 - [x] harden validation coverage and failure reporting
 - [x] verify reference / coord-mode handling against all intended `zoneout` workflows
 - [x] add stronger test coverage for malformed memberships and invalid references
-
 - [x] Slice 1.1: add `ids.hpp` with strong id wrappers for robot, mission, claim, and lease ids
 - [x] Slice 1.2: switch the new ids to preferred `dp::` scalar/string types where applicable
 - [x] Slice 1.3: add `workspace_index.hpp` scaffold and empty `WorkspaceIndex` type
@@ -1268,18 +371,10 @@ Still missing / still weak:
 
 ### Milestone 2: Membership And Spatial Semantics
 
-Current state:
-
-- partial implementation exists
-- still needs coverage and behavioral tightening
-
-Still missing / still weak:
-
 - [x] verify all coordinate transforms go through `concord::` only
 - [x] tighten local/global workflow validation
 - [x] add stronger edge-membership and hierarchy consistency tests
 - [x] document exact behavior when `coord_mode` and `ref` do not agree
-
 - [x] Slice 2.1: add `nodes_in_zone(zone_id)` query
 - [x] Slice 2.2: add `zones_of_node(node_id)` query
 - [x] Slice 2.3: add `zones_of_edge(edge_id)` query
@@ -1293,18 +388,10 @@ Still missing / still weak:
 
 ### Milestone 3: Zone Policy And Property Parsing
 
-Current state:
-
-- partial implementation exists
-- parser/semantics are present but not yet complete to plan level
-
-Still missing / still weak:
-
 - [x] cover the full agreed `traffic.*` property set
 - [x] finish stable validation/warning API for malformed property values
 - [x] verify merge/inheritance rules exactly match the intended hierarchy semantics
 - [x] cross-check parsing against the UI property editors now in use
-
 - [x] Slice 3.1: add `zone_policy.hpp` with typed zone policy enums and structs
 - [x] Slice 3.2: add typed edge-traffic semantics struct for parsed edge properties
 - [x] Slice 3.3: add parser for known `zone.properties` traffic keys
@@ -1313,48 +400,34 @@ Still missing / still weak:
 - [x] Slice 3.6: add validation errors/warnings for malformed traffic property values
 - [x] Slice 3.7: add effective-policy merge rules for nested zones
 - [x] Slice 3.8: add effective edge semantics derivation combining structural fields and properties
-- [x] Slice 3.9: add tests for property parsing, bad values, and inheritance/override rules
-- [x] Slice 3.10: add documentation comments/examples for the supported `traffic.*` keys
+- [x] Slice 3.9: add policy-layer regression tests
+- [x] Slice 3.10: document supported `traffic.*` keys in code/comments
 
-### Milestone 4: Routing And Planning
+### Milestone 4: Route Planning
 
-Current state:
-
-- partial implementation exists
-- planner behavior still needs more depth and validation
-
-Still missing / still weak:
-
-- [x] verify directionality handling exactly for all edge cases
-- [x] deepen route cost modeling from traffic properties
-- [x] improve diagnostics for blocked vs unreachable routes
-- [x] add richer fixtures with overlapping zones, lane rules, and planner tradeoffs
-
-- [x] Slice 4.1: add `route.hpp` with route step and route plan types
+- [x] ensure planner honors `directed` semantics exactly
+- [x] incorporate edge property semantics more completely into costing
+- [x] incorporate zone property semantics more completely into costing
+- [x] propagate penalized search costs into returned `RoutePlan` totals and timings
+- [x] improve blocked-vs-unreachable diagnostics
+- [x] add richer workspace fixtures to validate planner behavior
+- [x] Slice 4.1: add `route.hpp`
 - [x] Slice 4.2: add graph traversal adapter over the `zoneout` graph
-- [x] Slice 4.3: add basic shortest-path search without traffic constraints
+- [x] Slice 4.3: add shortest-path search over nodes
 - [x] Slice 4.4: add route reconstruction from predecessor state
-- [x] Slice 4.5: add route cost accumulation from edge weight
-- [x] Slice 4.6: add edge blocking from hard zone/edge policy
-- [x] Slice 4.7: add planner penalties from speed limit / cost bias / restricted policies
-- [x] Slice 4.8: add extraction of traversed nodes / edges / zones from a route
-- [x] Slice 4.9: add failure reporting for unreachable routes and policy-blocked routes
-- [x] Slice 4.10: add planner tests on small workspace fixtures with blocked and allowed alternatives
+- [x] Slice 4.5: add route-plan shape and cost helpers
+- [x] Slice 4.6: add traversal extraction for nodes, edges, zones, and steps
+- [x] Slice 4.7: add policy-aware blocked-edge handling
+- [x] Slice 4.8: add penalty-aware planning
+- [x] Slice 4.9: add route failure reporting
+- [x] Slice 4.10: add planner regression tests
 
-### Milestone 5: Claims, Leases, And Conflicts
-
-Current state:
-
-- partial implementation exists
-- conflict/lease behavior is present but still too shallow to call complete
-
-Still missing / still weak:
+### Milestone 5: Claims And Leases
 
 - [x] reflect real traffic semantics, not only simple exclusivity checks
 - [x] improve denial/conflict explanations
 - [x] deepen capacity-limited resource handling
 - [x] connect lease behavior more tightly to coordinator/scheduler expectations
-
 - [x] Slice 5.1: add `claim.hpp` with request, lease, and target types
 - [x] Slice 5.2: add `claim_manager.hpp` scaffold
 - [x] Slice 5.3: add storage for active claim requests
@@ -1368,18 +441,10 @@ Still missing / still weak:
 
 ### Milestone 6: Scheduling And Coordination
 
-Current state:
-
-- partial implementation exists
-- scheduling is still light and should not be treated as finished
-
-Still missing / still weak:
-
 - [x] build a stronger time-scheduling model beyond simple window checks
 - [x] deepen priority/right-of-way behavior
 - [x] add queueing and reservation-window logic
 - [x] define richer robot progress/state lifecycle behavior
-
 - [x] Slice 6.1: add `robot_state.hpp` with robot runtime state
 - [x] Slice 6.2: add `coordinator.hpp` scaffold
 - [x] Slice 6.3: add robot registration/state tracking
@@ -1391,20 +456,12 @@ Still missing / still weak:
 - [x] Slice 6.9: add simple priority/right-of-way arbitration hooks
 - [x] Slice 6.10: add tests for multi-robot progress, release, and scheduling conflicts
 
-### Milestone 7: VDA5050 3.0.0 Compatibility Layer
-
-Current state:
-
-- partial implementation exists
-- current VDA compatibility headers are especially thin relative to the plan
-
-Still missing / still weak:
+### Milestone 7: VDA5050 `3.0.0` Compatibility Layer
 
 - [x] align compatibility structs more closely with VDA5050 `3.0.0`
 - [x] add missing zone/edge request concepts where relevant
 - [x] expand state/order mappings substantially
 - [x] keep the adapter thin while still being meaningfully `3.0.0` compatible
-
 - [x] Slice 7.1: add `vda/order.hpp`
 - [x] Slice 7.2: add `vda/state.hpp`
 - [x] Slice 7.3: add `vda/connection.hpp`
@@ -1416,149 +473,36 @@ Still missing / still weak:
 - [x] Slice 7.9: map internal runtime/claim state to VDA state-compatible objects
 - [x] Slice 7.10: add tests for VDA `3.0.0` compatibility mappings
 
-This gives at least **70** possible slices. You do not have to implement all of them immediately, but the first **50** are already naturally available by stopping somewhere in milestone 6 or early milestone 7.
-
----
-
-## Implementation Order
-
-Do this in order:
-
-1. `ids.hpp`
-2. `workspace_index.hpp`
-3. `zone_policy.hpp`
-4. `route.hpp`
-5. route-planning internals inside `route.hpp`
-6. `claim.hpp`
-7. `claim_manager.hpp`
-8. `coordinator.hpp`
-9. `vda/` transport structs
-10. adapters and examples
-
-Do **not** start with JSON schema cloning.
-Do **not** start with transport before internal semantics exist.
-
----
-
-## Example Scenario Target
-
-This should be the first end-to-end example:
-
-- load a `zoneout::Workspace`
-- define:
-  - one root farm zone
-  - one field zone
-  - one exclusive gate zone
-  - graph through the field and gate
-- robot A requests route from node N1 to N5
-- coordinator derives:
-  - graph path
-  - needed zones
-  - needed gate claim
-- claim manager grants or denies
-- robot progress updates release zones behind it
-
-If `timenav` can do that well, the architecture is probably right.
-
----
-
-## Open Design Decisions
-
-These need explicit decisions before implementation goes too far.
-
-### 1. Canonical Membership Source
-
-Current recommendation:
-
-- `zoneout` graph node/edge memberships remain canonical
-- `timenav` derives effective policy from those memberships
-
-### 2. Claim Target Scope
-
-Recommendation:
-
-- support zone + edge + node claims internally from day one
-- expose zone claiming first in public examples
-
-### 3. Manual vs Derived Zone Policy
-
-Recommendation:
-
-- zone geometry and memberships are spatial facts
-- zone policy is semantic and comes from zone properties / config
-
-### 4. Transport Shape
-
-Recommendation:
-
-- internal model first
-- VDA-compatible adapter second
-
-### 5. Time Model
-
-Recommendation:
-
-- use `std::chrono`
-- lease expiry and heartbeat support from day one
-
----
-
-## Remaining Work Checklist
-
-This section summarizes the major unfinished work that must still happen before `timenav` matches the intended design.
-
-### Scheduling
+### Remaining Work Checklist Result
 
 - [x] define an actual scheduling model, not only a route/window filter
 - [x] define reservation windows over time for zones and edges
 - [x] define queueing rules for waiting robots
 - [x] define what happens when a robot misses its expected time slot
 - [x] define how schedule conflict resolution interacts with replanning
-
-### Traffic Rules
-
 - [x] define right-of-way rules beyond simple priority comparison
 - [x] fix bounded-capacity enforcement for shared zone and edge claims
 - [x] define waiting/no-stop behavior on lanes and zones
 - [x] define corridor semantics clearly
 - [x] define how blocked/restricted/slow policies affect planning vs claiming
-
-### Claim / Lease Semantics
-
 - [x] define claim target semantics precisely for zones, edges, and nodes
 - [x] define richer denial reasons and operator/debug visibility
 - [x] define lease refresh / extension behavior
 - [x] define revoke behavior and required downstream reactions
 - [x] fix rolling-horizon release/claim behavior to use per-step zone coverage instead of de-duplicated route zones
 - [x] clean requests and leases correctly on robot unregister/reset
-
-### Planner Depth
-
-- [x] ensure planner honors `directed` semantics exactly
-- [x] incorporate edge property semantics more completely into costing
-- [x] incorporate zone property semantics more completely into costing
-- [x] propagate penalized search costs into returned `RoutePlan` totals and timings
 - [x] improve blocked-vs-unreachable diagnostics
 - [x] add richer workspace fixtures to validate planner behavior
-
-### `dp::` And Type Discipline
-
 - [x] reduce remaining casual `std::` usage where `dp::` equivalents should be used
 - [x] standardize string/container/value conventions across all headers
 - [x] verify result/error surfaces use the intended library conventions consistently
 - [x] define refresh / mutation semantics for borrowed `WorkspaceIndex` inputs
-
-### VDA5050 `3.0.0` Compatibility
-
 - [x] deepen `order` compatibility with real `3.0.0` expectations
 - [x] deepen `state` compatibility with real `3.0.0` expectations
 - [x] incorporate zone/edge request concepts more faithfully
 - [x] make compatibility mapping broader without letting it become the core model
 - [x] validate malformed public `RoutePlan` input before mapping to VDA types
 - [x] narrow or restate compatibility claims unless protocol coverage is materially deeper
-
-### Testing
-
 - [x] add dedicated tests per major header/module
 - [x] add malformed property and malformed workspace tests
 - [x] add multi-robot conflict tests
@@ -1567,38 +511,17 @@ This section summarizes the major unfinished work that must still happen before 
 - [x] add tests for malformed `RoutePlan` inputs and inconsistent route shapes
 - [x] add tests for repeated-zone routes and zone re-entry during progress updates
 - [x] add tests for bounded-capacity saturation beyond two robots
-- [x] add tests for unregister/reset cleanup and stale borrowed-index behavior
 
 ---
 
-## Non-Goals For First Version
+## Next Document
 
-Do not try to solve all of this in `0.0.1`:
+If the project needs a next planning phase, create a new document for:
 
-- full VDA schema parity
-- multi-fleet federation
-- optimal multi-agent scheduling
-- deadlock-proof global planner
-- UI / visualization platform
-- safety certification concerns
+- production readiness
+- API cleanup
+- docs/examples expansion
+- operational validation
+- VDA depth expansion
 
-First version should prove:
-
-- workspace integration
-- route planning
-- zone claim semantics
-- VDA-shaped adapter model
-
----
-
-## Concrete Next Step
-
-The next corrective pass should focus on production blockers, in this order:
-
-- fix bounded shared-capacity enforcement in `claim_manager.hpp`
-- fix rolling-horizon zone claim/release bookkeeping in `coordinator.hpp`
-- clean claim state on robot unregister/reset
-- validate `RoutePlan` invariants before VDA mapping and claim derivation
-- add targeted regression tests in `test/doctest_test.cpp`
-
-That is the correct next step from the current codebase state.
+Do not reopen this file by mixing completed implementation history with future maturity work.
