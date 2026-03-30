@@ -1250,7 +1250,7 @@ Current state:
 
 Still missing / still weak:
 
-- [ ] align remaining internals more consistently with `dp::` conventions
+- [x] align remaining internals more consistently with `dp::` conventions
 - [x] harden validation coverage and failure reporting
 - [x] verify reference / coord-mode handling against all intended `zoneout` workflows
 - [x] add stronger test coverage for malformed memberships and invalid references
@@ -1303,7 +1303,7 @@ Still missing / still weak:
 - [x] cover the full agreed `traffic.*` property set
 - [x] finish stable validation/warning API for malformed property values
 - [x] verify merge/inheritance rules exactly match the intended hierarchy semantics
-- [ ] cross-check parsing against the UI property editors now in use
+- [x] cross-check parsing against the UI property editors now in use
 
 - [x] Slice 3.1: add `zone_policy.hpp` with typed zone policy enums and structs
 - [x] Slice 3.2: add typed edge-traffic semantics struct for parsed edge properties
@@ -1352,7 +1352,7 @@ Still missing / still weak:
 
 - [x] reflect real traffic semantics, not only simple exclusivity checks
 - [x] improve denial/conflict explanations
-- [ ] deepen capacity-limited resource handling
+- [x] deepen capacity-limited resource handling
 - [x] connect lease behavior more tightly to coordinator/scheduler expectations
 
 - [x] Slice 5.1: add `claim.hpp` with request, lease, and target types
@@ -1521,7 +1521,7 @@ This section summarizes the major unfinished work that must still happen before 
 - [x] fix bounded-capacity enforcement for shared zone and edge claims
 - [x] define waiting/no-stop behavior on lanes and zones
 - [x] define corridor semantics clearly
-- [ ] define how blocked/restricted/slow policies affect planning vs claiming
+- [x] define how blocked/restricted/slow policies affect planning vs claiming
 
 ### Claim / Lease Semantics
 
@@ -1538,14 +1538,14 @@ This section summarizes the major unfinished work that must still happen before 
 - [x] incorporate edge property semantics more completely into costing
 - [x] incorporate zone property semantics more completely into costing
 - [x] propagate penalized search costs into returned `RoutePlan` totals and timings
-- [ ] improve blocked-vs-unreachable diagnostics
-- [ ] add richer workspace fixtures to validate planner behavior
+- [x] improve blocked-vs-unreachable diagnostics
+- [x] add richer workspace fixtures to validate planner behavior
 
 ### `dp::` And Type Discipline
 
-- [ ] reduce remaining casual `std::` usage where `dp::` equivalents should be used
-- [ ] standardize string/container/value conventions across all headers
-- [ ] verify result/error surfaces use the intended library conventions consistently
+- [x] reduce remaining casual `std::` usage where `dp::` equivalents should be used
+- [x] standardize string/container/value conventions across all headers
+- [x] verify result/error surfaces use the intended library conventions consistently
 - [x] define refresh / mutation semantics for borrowed `WorkspaceIndex` inputs
 
 ### VDA5050 `3.0.0` Compatibility
@@ -1559,8 +1559,8 @@ This section summarizes the major unfinished work that must still happen before 
 
 ### Testing
 
-- [ ] add dedicated tests per major header/module
-- [ ] add malformed property and malformed workspace tests
+- [x] add dedicated tests per major header/module
+- [x] add malformed property and malformed workspace tests
 - [x] add multi-robot conflict tests
 - [x] add scheduler/priority/right-of-way tests
 - [x] add compatibility-layer tests against representative VDA `3.0.0` scenarios

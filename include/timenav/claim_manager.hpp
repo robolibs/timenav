@@ -322,7 +322,33 @@ namespace timenav {
                 return evaluation;
             }
 
+            if (const auto saturated = first_membership_capacity_violation(request, ClaimTargetKind::Node);
+                saturated.has_value()) {
+                ClaimEvaluation evaluation{};
+                evaluation.decision = ClaimDecision::Deny;
+                evaluation.reason = saturated->reason;
+                evaluation.conflicting_claim_id = saturated->conflicting_claim_id;
+                evaluation.conflicting_lease_id = saturated->conflicting_lease_id;
+                evaluation.conflicting_targets = {saturated->target};
+                evaluation.blocking_target = saturated->target;
+                evaluation.diagnostics = saturated->diagnostics;
+                return evaluation;
+            }
+
             if (const auto saturated = first_edge_capacity_violation(request); saturated.has_value()) {
+                ClaimEvaluation evaluation{};
+                evaluation.decision = ClaimDecision::Deny;
+                evaluation.reason = saturated->reason;
+                evaluation.conflicting_claim_id = saturated->conflicting_claim_id;
+                evaluation.conflicting_lease_id = saturated->conflicting_lease_id;
+                evaluation.conflicting_targets = {saturated->target};
+                evaluation.blocking_target = saturated->target;
+                evaluation.diagnostics = saturated->diagnostics;
+                return evaluation;
+            }
+
+            if (const auto saturated = first_membership_capacity_violation(request, ClaimTargetKind::Edge);
+                saturated.has_value()) {
                 ClaimEvaluation evaluation{};
                 evaluation.decision = ClaimDecision::Deny;
                 evaluation.reason = saturated->reason;
@@ -485,6 +511,79 @@ namespace timenav {
 
             return dp::nullopt;
         }
+        [[nodiscard]] dp::Optional<CapacityViolation> first_membership_capacity_violation(const ClaimRequest &request,
+                                                                                          ClaimTargetKind kind) const {
+            if (index_ == nullptr || request.access_mode != ClaimAccessMode::Shared) {
+                return dp::nullopt;
+            }
+
+            for (const auto &target : request.targets) {
+                if (target.kind != kind) {
+                    continue;
+                }
+
+                const auto target_zones = kind == ClaimTargetKind::Node ? index_->zones_of_node(target.resource_id)
+                                                                        : index_->zones_of_edge(target.resource_id);
+                for (const auto *zone : target_zones) {
+                    if (zone == nullptr) {
+                        continue;
+                    }
+                    const auto policy = parse_zone_policy(zone->properties());
+                    if (!policy.capacity_is_explicit || policy.capacity <= 1) {
+                        continue;
+                    }
+
+                    dp::u32 occupant_count = 1;
+                    dp::Optional<ClaimId> blocking_claim_id;
+                    dp::Optional<LeaseId> blocking_lease_id;
+
+                    for (const auto &active_request : active_requests_) {
+                        if (active_request.id == request.id || active_request.access_mode != ClaimAccessMode::Shared ||
+                            !claim_windows_overlap(request.window, active_request.window) ||
+                            !request_contains_resource_in_zone(active_request, kind, zone->id())) {
+                            continue;
+                        }
+                        ++occupant_count;
+                        if (!blocking_claim_id.has_value()) {
+                            blocking_claim_id = active_request.id;
+                        }
+                    }
+
+                    for (const auto &active_lease : active_leases_) {
+                        if (!active_lease.active || active_lease.access_mode != ClaimAccessMode::Shared ||
+                            !claim_windows_overlap(request.window, lease_window(active_lease)) ||
+                            !lease_contains_resource_in_zone(active_lease, kind, zone->id())) {
+                            continue;
+                        }
+                        ++occupant_count;
+                        if (!blocking_lease_id.has_value()) {
+                            blocking_lease_id = active_lease.id;
+                        }
+                    }
+
+                    if (occupant_count > policy.capacity) {
+                        CapacityViolation violation{};
+                        violation.target = ClaimTarget{ClaimTargetKind::Zone, zone->id()};
+                        violation.reason = kind == ClaimTargetKind::Node
+                                               ? dp::String{"shared node-zone capacity exceeded"}
+                                               : dp::String{"shared edge-zone capacity exceeded"};
+                        violation.conflicting_claim_id = blocking_claim_id;
+                        violation.conflicting_lease_id = blocking_lease_id;
+                        violation.diagnostics.push_back(
+                            kind == ClaimTargetKind::Node ? dp::String{"node claims exceed containing zone capacity"}
+                                                          : dp::String{"edge claims exceed containing zone capacity"});
+                        append_target_diagnostics(violation.diagnostics, violation.target);
+                        violation.diagnostics.push_back(dp::String{"configured capacity="} +
+                                                        dp::String{std::to_string(policy.capacity)});
+                        violation.diagnostics.push_back(dp::String{"observed occupancy="} +
+                                                        dp::String{std::to_string(occupant_count)});
+                        return violation;
+                    }
+                }
+            }
+
+            return dp::nullopt;
+        }
         [[nodiscard]] dp::Optional<ClaimTarget> first_invalid_target(const ClaimRequest &request) const noexcept {
             if (index_ == nullptr) {
                 return dp::nullopt;
@@ -641,6 +740,38 @@ namespace timenav {
                 }
             }
 
+            return false;
+        }
+        [[nodiscard]] bool request_contains_resource_in_zone(const ClaimRequest &request, ClaimTargetKind kind,
+                                                             const zoneout::UUID &zone_id) const {
+            for (const auto &candidate : request.targets) {
+                if (candidate.kind != kind) {
+                    continue;
+                }
+                const auto zones = kind == ClaimTargetKind::Node ? index_->zones_of_node(candidate.resource_id)
+                                                                 : index_->zones_of_edge(candidate.resource_id);
+                for (const auto *zone : zones) {
+                    if (zone != nullptr && zone->id() == zone_id) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        [[nodiscard]] bool lease_contains_resource_in_zone(const Lease &lease, ClaimTargetKind kind,
+                                                           const zoneout::UUID &zone_id) const {
+            for (const auto &candidate : lease.targets) {
+                if (candidate.kind != kind) {
+                    continue;
+                }
+                const auto zones = kind == ClaimTargetKind::Node ? index_->zones_of_node(candidate.resource_id)
+                                                                 : index_->zones_of_edge(candidate.resource_id);
+                for (const auto *zone : zones) {
+                    if (zone != nullptr && zone->id() == zone_id) {
+                        return true;
+                    }
+                }
+            }
             return false;
         }
         [[nodiscard]] bool request_overlaps_zone(const ClaimRequest &request, const zoneout::UUID &zone_id) const {

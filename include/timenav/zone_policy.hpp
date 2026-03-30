@@ -153,23 +153,82 @@ namespace timenav {
 
         inline bool is_known_zone_traffic_key(const std::string &key) {
             return key == "traffic.policy" || key == "traffic.mode" || key == "traffic.capacity" ||
-                   key == "traffic.max_occupancy" || key == "traffic.priority" || key == "traffic.claim_required" ||
-                   key == "traffic.entry_rule" || key == "traffic.exit_rule" || key == "traffic.speed_limit" ||
-                   key == "traffic.waiting_allowed" || key == "traffic.stop_allowed" || key == "traffic.no_stop" ||
-                   key == "traffic.replan_trigger" || key == "traffic.blocked" || key == "traffic.robot_class" ||
-                   key == "traffic.schedule_window" || key == "traffic.access_group" ||
-                   key == "traffic.blocks_entry_without_grant" || key == "traffic.blocks_traversal_without_grant";
+                   key == "traffic.max_occupancy" || key == "traffic.maxOccupancy" || key == "traffic.priority" ||
+                   key == "traffic.claim_required" || key == "traffic.claimRequired" || key == "traffic.entry_rule" ||
+                   key == "traffic.entryRule" || key == "traffic.exit_rule" || key == "traffic.exitRule" ||
+                   key == "traffic.speed_limit" || key == "traffic.speedLimit" || key == "traffic.waiting_allowed" ||
+                   key == "traffic.waitingAllowed" || key == "traffic.stop_allowed" || key == "traffic.stopAllowed" ||
+                   key == "traffic.no_stop" || key == "traffic.noStop" || key == "traffic.replan_trigger" ||
+                   key == "traffic.replanTrigger" || key == "traffic.blocked" || key == "traffic.robot_class" ||
+                   key == "traffic.robotClass" || key == "traffic.schedule_window" || key == "traffic.scheduleWindow" ||
+                   key == "traffic.access_group" || key == "traffic.accessGroup" ||
+                   key == "traffic.blocks_entry_without_grant" || key == "traffic.blocksEntryWithoutGrant" ||
+                   key == "traffic.blocks_traversal_without_grant" || key == "traffic.blocksTraversalWithoutGrant";
         }
 
         inline bool is_known_edge_traffic_key(const std::string &key) {
-            return key == "traffic.speed_limit" || key == "traffic.lane_type" || key == "traffic.lane_kind" ||
-                   key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.blocked" ||
-                   key == "traffic.priority" || key == "traffic.capacity" || key == "traffic.max_occupancy" ||
-                   key == "traffic.clearance_width" || key == "traffic.clearance_height" ||
-                   key == "traffic.surface_type" || key == "traffic.robot_class" || key == "traffic.allowed_payload" ||
-                   key == "traffic.cost_bias" || key == "traffic.no_stop" || key == "traffic.preferred_direction" ||
-                   key == "traffic.direction" || key == "traffic.claim_required" || key == "traffic.waiting_allowed" ||
-                   key == "traffic.stop_allowed" || key == "traffic.schedule_window" || key == "traffic.access_group";
+            return key == "traffic.speed_limit" || key == "traffic.speedLimit" || key == "traffic.lane_type" ||
+                   key == "traffic.laneType" || key == "traffic.lane_kind" || key == "traffic.laneKind" ||
+                   key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.passingAllowed" ||
+                   key == "traffic.blocked" || key == "traffic.priority" || key == "traffic.capacity" ||
+                   key == "traffic.max_occupancy" || key == "traffic.maxOccupancy" ||
+                   key == "traffic.clearance_width" || key == "traffic.clearanceWidth" ||
+                   key == "traffic.clearance_height" || key == "traffic.clearanceHeight" ||
+                   key == "traffic.surface_type" || key == "traffic.surfaceType" || key == "traffic.robot_class" ||
+                   key == "traffic.robotClass" || key == "traffic.allowed_payload" || key == "traffic.allowedPayload" ||
+                   key == "traffic.cost_bias" || key == "traffic.costBias" || key == "traffic.no_stop" ||
+                   key == "traffic.noStop" || key == "traffic.preferred_direction" ||
+                   key == "traffic.preferredDirection" || key == "traffic.direction" ||
+                   key == "traffic.claim_required" || key == "traffic.claimRequired" ||
+                   key == "traffic.waiting_allowed" || key == "traffic.waitingAllowed" ||
+                   key == "traffic.stop_allowed" || key == "traffic.stopAllowed" || key == "traffic.schedule_window" ||
+                   key == "traffic.scheduleWindow" || key == "traffic.access_group" || key == "traffic.accessGroup";
+        }
+
+        inline std::string canonical_zone_traffic_key(const std::string &key) {
+            static const std::unordered_map<std::string, std::string> aliases = {
+                {"traffic.maxOccupancy", "traffic.max_occupancy"},
+                {"traffic.claimRequired", "traffic.claim_required"},
+                {"traffic.entryRule", "traffic.entry_rule"},
+                {"traffic.exitRule", "traffic.exit_rule"},
+                {"traffic.speedLimit", "traffic.speed_limit"},
+                {"traffic.waitingAllowed", "traffic.waiting_allowed"},
+                {"traffic.stopAllowed", "traffic.stop_allowed"},
+                {"traffic.noStop", "traffic.no_stop"},
+                {"traffic.replanTrigger", "traffic.replan_trigger"},
+                {"traffic.robotClass", "traffic.robot_class"},
+                {"traffic.scheduleWindow", "traffic.schedule_window"},
+                {"traffic.accessGroup", "traffic.access_group"},
+                {"traffic.blocksEntryWithoutGrant", "traffic.blocks_entry_without_grant"},
+                {"traffic.blocksTraversalWithoutGrant", "traffic.blocks_traversal_without_grant"},
+            };
+            const auto it = aliases.find(key);
+            return it == aliases.end() ? key : it->second;
+        }
+
+        inline std::string canonical_edge_traffic_key(const std::string &key) {
+            static const std::unordered_map<std::string, std::string> aliases = {
+                {"traffic.speedLimit", "traffic.speed_limit"},
+                {"traffic.laneType", "traffic.lane_type"},
+                {"traffic.laneKind", "traffic.lane_kind"},
+                {"traffic.passingAllowed", "traffic.passing_allowed"},
+                {"traffic.maxOccupancy", "traffic.max_occupancy"},
+                {"traffic.clearanceWidth", "traffic.clearance_width"},
+                {"traffic.clearanceHeight", "traffic.clearance_height"},
+                {"traffic.surfaceType", "traffic.surface_type"},
+                {"traffic.robotClass", "traffic.robot_class"},
+                {"traffic.allowedPayload", "traffic.allowed_payload"},
+                {"traffic.costBias", "traffic.cost_bias"},
+                {"traffic.noStop", "traffic.no_stop"},
+                {"traffic.preferredDirection", "traffic.preferred_direction"},
+                {"traffic.claimRequired", "traffic.claim_required"},
+                {"traffic.waitingAllowed", "traffic.waiting_allowed"},
+                {"traffic.stopAllowed", "traffic.stop_allowed"},
+                {"traffic.scheduleWindow", "traffic.schedule_window"},
+                {"traffic.accessGroup", "traffic.access_group"},
+            };
+            const auto it = aliases.find(key);
+            return it == aliases.end() ? key : it->second;
         }
 
         inline void sort_traffic_issues(dp::Vector<TrafficParseIssue> &issues) {
@@ -253,10 +312,11 @@ namespace timenav {
 
         for (const auto &[key, value] : properties) {
             policy.properties[dp::String{key}] = dp::String{value};
+            const auto canonical_key = detail::canonical_zone_traffic_key(key);
 
-            if (key == "traffic.policy" || key == "traffic.mode") {
+            if (canonical_key == "traffic.policy" || canonical_key == "traffic.mode") {
                 policy.kind = detail::parse_zone_policy_kind(value);
-            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
+            } else if (canonical_key == "traffic.capacity" || canonical_key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_ok() && parsed.value() >= 1) {
                     policy.capacity = parsed.value();
@@ -265,13 +325,13 @@ namespace timenav {
                         policy.kind = ZonePolicyKind::CapacityLimited;
                     }
                 }
-            } else if (key == "traffic.claim_required") {
+            } else if (canonical_key == "traffic.claim_required") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.requires_claim = parsed.value();
                     policy.blocks_entry_without_grant = parsed.value();
                 }
-            } else if (key == "traffic.blocked") {
+            } else if (canonical_key == "traffic.blocked") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.blocked = parsed.value();
@@ -281,37 +341,37 @@ namespace timenav {
                         policy.blocks_traversal_without_grant = true;
                     }
                 }
-            } else if (key == "traffic.blocks_entry_without_grant") {
+            } else if (canonical_key == "traffic.blocks_entry_without_grant") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.blocks_entry_without_grant = parsed.value();
                 }
-            } else if (key == "traffic.blocks_traversal_without_grant") {
+            } else if (canonical_key == "traffic.blocks_traversal_without_grant") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.blocks_traversal_without_grant = parsed.value();
                 }
-            } else if (key == "traffic.priority") {
+            } else if (canonical_key == "traffic.priority") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     policy.priority = parsed.value();
                 }
-            } else if (key == "traffic.speed_limit") {
+            } else if (canonical_key == "traffic.speed_limit") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     policy.speed_limit = parsed.value();
                 }
-            } else if (key == "traffic.waiting_allowed") {
+            } else if (canonical_key == "traffic.waiting_allowed") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.waiting_allowed = parsed.value();
                 }
-            } else if (key == "traffic.stop_allowed") {
+            } else if (canonical_key == "traffic.stop_allowed") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.stop_allowed = parsed.value();
                 }
-            } else if (key == "traffic.no_stop") {
+            } else if (canonical_key == "traffic.no_stop") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.stop_allowed = !parsed.value();
@@ -319,7 +379,7 @@ namespace timenav {
                         policy.kind = ZonePolicyKind::NoStop;
                     }
                 }
-            } else if (key == "traffic.replan_trigger") {
+            } else if (canonical_key == "traffic.replan_trigger") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     policy.replan_trigger = parsed.value();
@@ -327,15 +387,15 @@ namespace timenav {
                 if (policy.replan_trigger.value_or(false)) {
                     policy.kind = ZonePolicyKind::Replanning;
                 }
-            } else if (key == "traffic.entry_rule") {
+            } else if (canonical_key == "traffic.entry_rule") {
                 policy.entry_rule = dp::String{value};
-            } else if (key == "traffic.exit_rule") {
+            } else if (canonical_key == "traffic.exit_rule") {
                 policy.exit_rule = dp::String{value};
-            } else if (key == "traffic.robot_class") {
+            } else if (canonical_key == "traffic.robot_class") {
                 policy.robot_class = dp::String{value};
-            } else if (key == "traffic.schedule_window") {
+            } else if (canonical_key == "traffic.schedule_window") {
                 policy.schedule_window = dp::String{value};
-            } else if (key == "traffic.access_group") {
+            } else if (canonical_key == "traffic.access_group") {
                 policy.access_group = dp::String{value};
             }
         }
@@ -346,7 +406,8 @@ namespace timenav {
             policy.blocks_traversal_without_grant = true;
         } else if (policy.replan_trigger.value_or(false)) {
             policy.kind = ZonePolicyKind::Replanning;
-        } else if (policy.stop_allowed.has_value() && !policy.stop_allowed.value()) {
+        } else if (policy.kind != ZonePolicyKind::Restricted && policy.stop_allowed.has_value() &&
+                   !policy.stop_allowed.value()) {
             policy.kind = ZonePolicyKind::NoStop;
         }
 
@@ -391,86 +452,87 @@ namespace timenav {
 
         for (const auto &[key, value] : properties) {
             semantics.properties[dp::String{key}] = dp::String{value};
+            const auto canonical_key = detail::canonical_edge_traffic_key(key);
 
-            if (key == "traffic.speed_limit") {
+            if (canonical_key == "traffic.speed_limit") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     semantics.speed_limit = parsed.value();
                 }
-            } else if (key == "traffic.lane_type" || key == "traffic.lane_kind") {
+            } else if (canonical_key == "traffic.lane_type" || canonical_key == "traffic.lane_kind") {
                 semantics.lane_type = dp::String{value};
-            } else if (key == "traffic.reversible") {
+            } else if (canonical_key == "traffic.reversible") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.reversible = parsed.value();
                 }
-            } else if (key == "traffic.passing_allowed") {
+            } else if (canonical_key == "traffic.passing_allowed") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.passing_allowed = parsed.value();
                 }
-            } else if (key == "traffic.claim_required") {
+            } else if (canonical_key == "traffic.claim_required") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.requires_claim = parsed.value();
                 }
-            } else if (key == "traffic.waiting_allowed") {
+            } else if (canonical_key == "traffic.waiting_allowed") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.waiting_allowed = parsed.value();
                 }
-            } else if (key == "traffic.stop_allowed") {
+            } else if (canonical_key == "traffic.stop_allowed") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.stop_allowed = parsed.value();
                 }
-            } else if (key == "traffic.blocked") {
+            } else if (canonical_key == "traffic.blocked") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.blocked = parsed.value();
                 }
-            } else if (key == "traffic.priority") {
+            } else if (canonical_key == "traffic.priority") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     semantics.priority = parsed.value();
                 }
-            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
+            } else if (canonical_key == "traffic.capacity" || canonical_key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_ok()) {
                     semantics.capacity = parsed.value();
                     semantics.capacity_is_explicit = true;
                 }
-            } else if (key == "traffic.clearance_width") {
+            } else if (canonical_key == "traffic.clearance_width") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     semantics.clearance_width = parsed.value();
                 }
-            } else if (key == "traffic.clearance_height") {
+            } else if (canonical_key == "traffic.clearance_height") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     semantics.clearance_height = parsed.value();
                 }
-            } else if (key == "traffic.surface_type") {
+            } else if (canonical_key == "traffic.surface_type") {
                 semantics.surface_type = dp::String{value};
-            } else if (key == "traffic.robot_class") {
+            } else if (canonical_key == "traffic.robot_class") {
                 semantics.robot_class = dp::String{value};
-            } else if (key == "traffic.allowed_payload") {
+            } else if (canonical_key == "traffic.allowed_payload") {
                 semantics.allowed_payload = dp::String{value};
-            } else if (key == "traffic.cost_bias") {
+            } else if (canonical_key == "traffic.cost_bias") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
                     semantics.cost_bias = parsed.value();
                 }
-            } else if (key == "traffic.no_stop") {
+            } else if (canonical_key == "traffic.no_stop") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
                     semantics.no_stop = parsed.value();
                 }
-            } else if (key == "traffic.preferred_direction" || key == "traffic.direction") {
+            } else if (canonical_key == "traffic.preferred_direction" || canonical_key == "traffic.direction") {
                 semantics.preferred_direction = dp::String{value};
-            } else if (key == "traffic.schedule_window") {
+            } else if (canonical_key == "traffic.schedule_window") {
                 semantics.schedule_window = dp::String{value};
-            } else if (key == "traffic.access_group") {
+            } else if (canonical_key == "traffic.access_group") {
                 semantics.access_group = dp::String{value};
             }
         }
@@ -487,41 +549,44 @@ namespace timenav {
         dp::Vector<TrafficParseIssue> issues;
 
         for (const auto &[key, value] : properties) {
+            const auto canonical_key = detail::canonical_zone_traffic_key(key);
             if (key.rfind("traffic.", 0) == 0 && !detail::is_known_zone_traffic_key(key)) {
                 issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
                                                    dp::String{"unknown zone traffic key"}});
-            } else if (key == "traffic.policy" || key == "traffic.mode") {
+            } else if (canonical_key == "traffic.policy" || canonical_key == "traffic.mode") {
                 if (!detail::is_known_zone_policy_kind(value)) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
                                                        dp::String{"unknown zone policy keyword"}});
                 }
-            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
+            } else if (canonical_key == "traffic.capacity" || canonical_key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_err() || parsed.value_or(0) < 1) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic.capacity must be an integer >= 1"}});
                 }
-            } else if (key == "traffic.priority") {
+            } else if (canonical_key == "traffic.priority") {
                 if (parse_traffic_f64(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic.priority must be numeric"}});
                 }
-            } else if (key == "traffic.speed_limit") {
+            } else if (canonical_key == "traffic.speed_limit") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_err() || parsed.value_or(0.0) <= 0.0) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic.speed_limit must be positive"}});
                 }
-            } else if (key == "traffic.claim_required" || key == "traffic.waiting_allowed" ||
-                       key == "traffic.stop_allowed" || key == "traffic.blocked" || key == "traffic.replan_trigger" ||
-                       key == "traffic.no_stop" || key == "traffic.blocks_entry_without_grant" ||
-                       key == "traffic.blocks_traversal_without_grant") {
+            } else if (canonical_key == "traffic.claim_required" || canonical_key == "traffic.waiting_allowed" ||
+                       canonical_key == "traffic.stop_allowed" || canonical_key == "traffic.blocked" ||
+                       canonical_key == "traffic.replan_trigger" || canonical_key == "traffic.no_stop" ||
+                       canonical_key == "traffic.blocks_entry_without_grant" ||
+                       canonical_key == "traffic.blocks_traversal_without_grant") {
                 if (parse_traffic_bool(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic boolean key must parse as true/false"}});
                 }
-            } else if (key == "traffic.entry_rule" || key == "traffic.exit_rule" || key == "traffic.robot_class" ||
-                       key == "traffic.schedule_window" || key == "traffic.access_group") {
+            } else if (canonical_key == "traffic.entry_rule" || canonical_key == "traffic.exit_rule" ||
+                       canonical_key == "traffic.robot_class" || canonical_key == "traffic.schedule_window" ||
+                       canonical_key == "traffic.access_group") {
                 if (parse_traffic_string(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic string key must not be empty"}});
@@ -550,38 +615,42 @@ namespace timenav {
         dp::Vector<TrafficParseIssue> issues;
 
         for (const auto &[key, value] : properties) {
+            const auto canonical_key = detail::canonical_edge_traffic_key(key);
             if (key.rfind("traffic.", 0) == 0 && !detail::is_known_edge_traffic_key(key)) {
                 issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
                                                    dp::String{"unknown edge traffic key"}});
-            } else if (key == "traffic.capacity" || key == "traffic.max_occupancy") {
+            } else if (canonical_key == "traffic.capacity" || canonical_key == "traffic.max_occupancy") {
                 const auto parsed = parse_traffic_u64(value);
                 if (parsed.is_err() || parsed.value_or(0) < 1) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic.capacity must be an integer >= 1"}});
                 }
-            } else if (key == "traffic.speed_limit" || key == "traffic.priority" || key == "traffic.clearance_width" ||
-                       key == "traffic.clearance_height" || key == "traffic.cost_bias") {
+            } else if (canonical_key == "traffic.speed_limit" || canonical_key == "traffic.priority" ||
+                       canonical_key == "traffic.clearance_width" || canonical_key == "traffic.clearance_height" ||
+                       canonical_key == "traffic.cost_bias") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic numeric key must parse as number"}});
-                } else if ((key == "traffic.speed_limit" || key == "traffic.clearance_width" ||
-                            key == "traffic.clearance_height") &&
+                } else if ((canonical_key == "traffic.speed_limit" || canonical_key == "traffic.clearance_width" ||
+                            canonical_key == "traffic.clearance_height") &&
                            parsed.value() <= 0.0) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic positive numeric key must be > 0"}});
                 }
-            } else if (key == "traffic.reversible" || key == "traffic.passing_allowed" || key == "traffic.no_stop" ||
-                       key == "traffic.blocked" || key == "traffic.claim_required" ||
-                       key == "traffic.waiting_allowed" || key == "traffic.stop_allowed") {
+            } else if (canonical_key == "traffic.reversible" || canonical_key == "traffic.passing_allowed" ||
+                       canonical_key == "traffic.no_stop" || canonical_key == "traffic.blocked" ||
+                       canonical_key == "traffic.claim_required" || canonical_key == "traffic.waiting_allowed" ||
+                       canonical_key == "traffic.stop_allowed") {
                 if (parse_traffic_bool(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic boolean key must parse as true/false"}});
                 }
-            } else if (key == "traffic.lane_type" || key == "traffic.lane_kind" || key == "traffic.surface_type" ||
-                       key == "traffic.robot_class" || key == "traffic.allowed_payload" ||
-                       key == "traffic.preferred_direction" || key == "traffic.direction" ||
-                       key == "traffic.schedule_window" || key == "traffic.access_group") {
+            } else if (canonical_key == "traffic.lane_type" || canonical_key == "traffic.lane_kind" ||
+                       canonical_key == "traffic.surface_type" || canonical_key == "traffic.robot_class" ||
+                       canonical_key == "traffic.allowed_payload" || canonical_key == "traffic.preferred_direction" ||
+                       canonical_key == "traffic.direction" || canonical_key == "traffic.schedule_window" ||
+                       canonical_key == "traffic.access_group") {
                 if (parse_traffic_string(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic string key must not be empty"}});
@@ -603,6 +672,34 @@ namespace timenav {
         detail::sort_traffic_issues(issues);
 
         return issues;
+    }
+
+    inline std::unordered_map<std::string, std::string>
+    to_std_property_map(const dp::Map<dp::String, dp::String> &properties) {
+        std::unordered_map<std::string, std::string> converted;
+        for (const auto &[key, value] : properties) {
+            converted.emplace(key.c_str(), value.c_str());
+        }
+        return converted;
+    }
+
+    inline ZonePolicy parse_zone_policy(const dp::Map<dp::String, dp::String> &properties) {
+        return parse_zone_policy(to_std_property_map(properties));
+    }
+
+    inline EdgeTrafficSemantics parse_edge_traffic_semantics(const dp::Map<dp::String, dp::String> &properties,
+                                                             bool directed = false) {
+        return parse_edge_traffic_semantics(to_std_property_map(properties), directed);
+    }
+
+    inline dp::Vector<TrafficParseIssue>
+    validate_zone_traffic_properties(const dp::Map<dp::String, dp::String> &properties) {
+        return validate_zone_traffic_properties(to_std_property_map(properties));
+    }
+
+    inline dp::Vector<TrafficParseIssue>
+    validate_edge_traffic_properties(const dp::Map<dp::String, dp::String> &properties) {
+        return validate_edge_traffic_properties(to_std_property_map(properties));
     }
 
     /**

@@ -49,6 +49,7 @@ namespace timenav {
         dp::Vector<zoneout::UUID> blocked_zone_ids;
         dp::Vector<zoneout::UUID> directionally_blocked_edge_ids;
         dp::Vector<zoneout::UUID> reachable_node_ids;
+        dp::Vector<dp::String> diagnostics;
     };
 
     struct RoutePlanningResult {
@@ -788,7 +789,8 @@ namespace timenav {
                                 {},
                                 {},
                                 {},
-                                {}};
+                                {},
+                                {dp::String{"planner cannot start without a valid start node"}}};
         }
         if (index.node(goal_node_id) == nullptr) {
             return RouteFailure{RouteFailureKind::MissingGoalNode,
@@ -796,7 +798,8 @@ namespace timenav {
                                 {},
                                 {},
                                 {},
-                                {}};
+                                {},
+                                {dp::String{"planner cannot finish without a valid goal node"}}};
         }
 
         const auto unconstrained = shortest_path_search(index, start_node_id, goal_node_id);
@@ -817,9 +820,28 @@ namespace timenav {
             }
 
             GraphTraversalAdapter adapter{index};
+            dp::Vector<dp::String> diagnostics;
+            bool saw_restricted_resource = false;
+            bool saw_slow_resource = false;
             for (const auto &node_id : reachable_node_ids) {
                 for (const auto &neighbor : adapter.neighbors(node_id)) {
                     if (!is_edge_hard_blocked(index, neighbor.edge_id)) {
+                        if (const auto *edge_data = index.edge(neighbor.edge_id); edge_data != nullptr) {
+                            dp::Vector<ZonePolicy> zone_policies;
+                            for (const auto *zone : index.zones_of_edge(neighbor.edge_id)) {
+                                if (zone != nullptr) {
+                                    zone_policies.push_back(parse_zone_policy(zone->properties()));
+                                }
+                            }
+                            const auto semantics =
+                                derive_effective_edge_semantics(edge_data->properties, false, zone_policies);
+                            if (semantics.requires_claim.value_or(false) || semantics.access_group.has_value()) {
+                                saw_restricted_resource = true;
+                            }
+                            if (semantics.speed_limit.has_value() && semantics.speed_limit.value() < 1.0) {
+                                saw_slow_resource = true;
+                            }
+                        }
                         continue;
                     }
 
@@ -855,6 +877,14 @@ namespace timenav {
                 }
             }
 
+            if (saw_restricted_resource) {
+                diagnostics.push_back("restricted resources were present on reachable alternatives but require claims");
+            }
+            if (saw_slow_resource) {
+                diagnostics.push_back("slowdown policies affect costs but do not hard-block planning");
+            }
+            diagnostics.push_back("blocked or restricted resources must be claimed; slowdown only increases cost");
+
             dp::String message = "route is blocked by traffic policy";
             if (!blocked_edge_ids.empty() || !blocked_zone_ids.empty()) {
                 message += " (";
@@ -864,8 +894,13 @@ namespace timenav {
                 message += " blocked zone(s))";
             }
 
-            return RouteFailure{
-                RouteFailureKind::PolicyBlocked, message, blocked_edge_ids, blocked_zone_ids, {}, reachable_node_ids};
+            return RouteFailure{RouteFailureKind::PolicyBlocked,
+                                message,
+                                blocked_edge_ids,
+                                blocked_zone_ids,
+                                {},
+                                reachable_node_ids,
+                                diagnostics};
         }
 
         dp::Vector<zoneout::UUID> reachable_node_ids;
@@ -915,8 +950,20 @@ namespace timenav {
             message += " direction-locked edge(s)";
         }
 
-        return RouteFailure{RouteFailureKind::Unreachable,  message,           {}, {},
-                            directionally_blocked_edge_ids, reachable_node_ids};
+        dp::Vector<dp::String> diagnostics;
+        if (!directionally_blocked_edge_ids.empty()) {
+            diagnostics.push_back("reachable frontier is constrained by direction-locked edges");
+        } else {
+            diagnostics.push_back("no blocked edge was found; the graph is disconnected or lacks a legal path");
+        }
+        diagnostics.push_back("unreachable means no legal path exists even without applying hard traffic blocking");
+        return RouteFailure{RouteFailureKind::Unreachable,
+                            message,
+                            {},
+                            {},
+                            directionally_blocked_edge_ids,
+                            reachable_node_ids,
+                            diagnostics};
     }
 
     inline RoutePlanningResult plan_route(const WorkspaceIndex &index, const zoneout::UUID &start_node_id,
@@ -933,7 +980,14 @@ namespace timenav {
         const auto cost_model = use_penalties ? RouteCostModel::Penalized : RouteCostModel::GraphWeight;
         const auto route_plan = build_route_plan(index, result.search, start_node_id, goal_node_id, cost_model);
         if (route_plan.is_err()) {
-            result.failure = RouteFailure{RouteFailureKind::Unreachable, route_plan.error().message, {}, {}, {}, {}};
+            result.failure =
+                RouteFailure{RouteFailureKind::Unreachable,
+                             route_plan.error().message,
+                             {},
+                             {},
+                             {},
+                             {},
+                             {dp::String{"planner found a search path but route-plan reconstruction failed"}}};
             return result;
         }
 
