@@ -86,3 +86,56 @@ TEST_CASE("workspace index module reads dedicated property access in a focused t
     REQUIRE(mode.has_value());
     CHECK(mode.value() == "shared");
 }
+
+TEST_CASE("workspace index module reports duplicate ids and traffic property issues") {
+    auto workspace = make_invalid_workspace_fixture();
+
+    const auto duplicate_zone_id = workspace.root_zone().children()[0].id();
+    workspace.root_zone().children()[0].set_property("traffic.speedLimit", "fast");
+    auto duplicate_zone = zoneout::ZoneBuilder()
+                              .with_name("duplicate-child")
+                              .with_type("lane")
+                              .with_boundary(rectangle(45.0, 10.0, 70.0, 40.0))
+                              .with_datum(dp::Geo{52.0, 5.0, 0.0})
+                              .build();
+    duplicate_zone.set_property("traffic.mode", "  SHARED  ");
+    workspace.root_zone().add_child(std::move(duplicate_zone));
+    workspace.root_zone().children().back().set_id(duplicate_zone_id);
+
+    const auto duplicate_node_id = workspace.graph()[workspace.graph().vertices()[0]].id;
+    workspace.add_node(zoneout::NodeData{duplicate_node_id, dp::Point{35.0, 35.0, 0.0}});
+
+    const auto edge_id = workspace.graph().edge_property(*workspace.find_edge(
+        zoneout::UUID("cc333333-3333-4333-8333-333333333333"))).id;
+    const auto extra_node = workspace.add_node(zoneout::NodeData{
+        zoneout::UUID("dd444444-4444-4444-8444-444444444444"), dp::Point{40.0, 40.0, 0.0}});
+    workspace.graph()[extra_node].zone_ids.push_back(workspace.root_zone().id());
+    workspace.add_edge(workspace.graph().vertices()[0], extra_node,
+                       zoneout::EdgeData{edge_id, {{"traffic.preferredDirection", "sideways"}}});
+
+    const timenav::WorkspaceIndex index{workspace};
+    const auto issues = index.validation_issues();
+
+    bool saw_duplicate_zone = false;
+    bool saw_duplicate_node = false;
+    bool saw_duplicate_edge = false;
+    bool saw_zone_traffic_issue = false;
+    bool saw_edge_traffic_issue = false;
+    for (const auto &issue : issues) {
+        saw_duplicate_zone = saw_duplicate_zone || (issue.category == "duplicate_id" && issue.resource_kind == "zone");
+        saw_duplicate_node = saw_duplicate_node || (issue.category == "duplicate_id" && issue.resource_kind == "node");
+        saw_duplicate_edge = saw_duplicate_edge || (issue.category == "duplicate_id" && issue.resource_kind == "edge");
+        saw_zone_traffic_issue =
+            saw_zone_traffic_issue || (issue.category == "traffic_property" && issue.resource_kind == "zone" &&
+                                       issue.message.find("traffic.speedLimit") != dp::String::npos);
+        saw_edge_traffic_issue =
+            saw_edge_traffic_issue || (issue.category == "traffic_property" && issue.resource_kind == "edge" &&
+                                       issue.message.find("traffic.preferredDirection") != dp::String::npos);
+    }
+
+    CHECK(saw_duplicate_zone);
+    CHECK(saw_duplicate_node);
+    CHECK(saw_duplicate_edge);
+    CHECK(saw_zone_traffic_issue);
+    CHECK(saw_edge_traffic_issue);
+}

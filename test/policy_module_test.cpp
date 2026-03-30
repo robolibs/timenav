@@ -85,3 +85,49 @@ TEST_CASE("policy module reports malformed aliased editor properties precisely")
     CHECK(zone_issues.size() >= 3);
     CHECK(edge_issues.size() >= 3);
 }
+
+TEST_CASE("policy module normalizes trimmed mixed-case traffic vocabulary") {
+    dp::Map<dp::String, dp::String> zone_properties = {
+        {"traffic.mode", "  SHARED  "},
+        {"traffic.scheduleWindow", "  weekday_day  "},
+    };
+    dp::Map<dp::String, dp::String> edge_properties = {
+        {"traffic.laneType", "  CORRIDOR  "},
+        {"traffic.preferredDirection", "  ReVeRsE  "},
+    };
+
+    const auto policy = timenav::parse_zone_policy(zone_properties);
+    const auto semantics = timenav::parse_edge_traffic_semantics(edge_properties, true);
+    const auto zone_issues = timenav::validate_zone_traffic_properties(zone_properties);
+    const auto edge_issues = timenav::validate_edge_traffic_properties(edge_properties);
+
+    CHECK(policy.kind == timenav::ZonePolicyKind::SharedAccess);
+    REQUIRE(policy.schedule_window.has_value());
+    CHECK(policy.schedule_window.value() == "weekday_day");
+    REQUIRE(semantics.lane_type.has_value());
+    CHECK(semantics.lane_type.value() == "corridor");
+    REQUIRE(semantics.preferred_direction.has_value());
+    CHECK(semantics.preferred_direction.value() == "reverse");
+    CHECK(zone_issues.empty());
+    CHECK(edge_issues.empty());
+}
+
+TEST_CASE("policy module warns on unknown controlled traffic vocabulary") {
+    dp::Map<dp::String, dp::String> edge_properties = {
+        {"traffic.laneType", "hoverlane"},
+        {"traffic.preferredDirection", "sideways"},
+    };
+
+    const auto issues = timenav::validate_edge_traffic_properties(edge_properties);
+    bool saw_lane_issue = false;
+    bool saw_direction_issue = false;
+
+    for (const auto &issue : issues) {
+        saw_lane_issue = saw_lane_issue || issue.message == "unknown lane type keyword";
+        saw_direction_issue = saw_direction_issue || issue.message == "unknown preferred direction keyword";
+    }
+
+    CHECK(issues.size() == 2);
+    CHECK(saw_lane_issue);
+    CHECK(saw_direction_issue);
+}

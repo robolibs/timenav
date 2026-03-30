@@ -122,33 +122,49 @@ namespace timenav {
         }
 
         inline ZonePolicyKind parse_zone_policy_kind(const std::string &value) {
-            if (value == "exclusive") {
+            const auto normalized = lower_copy(trim_copy(value));
+            if (normalized == "exclusive") {
                 return ZonePolicyKind::ExclusiveAccess;
             }
-            if (value == "shared") {
+            if (normalized == "shared") {
                 return ZonePolicyKind::SharedAccess;
             }
-            if (value == "corridor") {
+            if (normalized == "corridor") {
                 return ZonePolicyKind::Corridor;
             }
-            if (value == "restricted") {
+            if (normalized == "restricted") {
                 return ZonePolicyKind::Restricted;
             }
-            if (value == "slow") {
+            if (normalized == "slow") {
                 return ZonePolicyKind::Slowdown;
             }
-            if (value == "replanning") {
+            if (normalized == "replanning") {
                 return ZonePolicyKind::Replanning;
             }
-            if (value == "no_stop") {
+            if (normalized == "no_stop") {
                 return ZonePolicyKind::NoStop;
             }
             return ZonePolicyKind::Informational;
         }
 
         inline bool is_known_zone_policy_kind(const std::string &value) {
-            return value == "informational" || value == "exclusive" || value == "shared" || value == "corridor" ||
-                   value == "restricted" || value == "slow" || value == "replanning" || value == "no_stop";
+            const auto normalized = lower_copy(trim_copy(value));
+            return normalized == "informational" || normalized == "exclusive" || normalized == "shared" ||
+                   normalized == "corridor" || normalized == "restricted" || normalized == "slow" ||
+                   normalized == "replanning" || normalized == "no_stop";
+        }
+
+        inline bool is_known_lane_type(const std::string &value) {
+            const auto normalized = lower_copy(trim_copy(value));
+            return normalized == "corridor" || normalized == "service" || normalized == "shared" ||
+                   normalized == "restricted" || normalized == "passing" || normalized == "staging";
+        }
+
+        inline bool is_known_preferred_direction(const std::string &value) {
+            const auto normalized = lower_copy(trim_copy(value));
+            return normalized == "forward" || normalized == "reverse" || normalized == "bidirectional" ||
+                   normalized == "source_to_target" || normalized == "target_to_source" || normalized == "eastbound" ||
+                   normalized == "westbound" || normalized == "northbound" || normalized == "southbound";
         }
 
         inline bool is_known_zone_traffic_key(const std::string &key) {
@@ -388,15 +404,30 @@ namespace timenav {
                     policy.kind = ZonePolicyKind::Replanning;
                 }
             } else if (canonical_key == "traffic.entry_rule") {
-                policy.entry_rule = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    policy.entry_rule = parsed.value();
+                }
             } else if (canonical_key == "traffic.exit_rule") {
-                policy.exit_rule = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    policy.exit_rule = parsed.value();
+                }
             } else if (canonical_key == "traffic.robot_class") {
-                policy.robot_class = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    policy.robot_class = parsed.value();
+                }
             } else if (canonical_key == "traffic.schedule_window") {
-                policy.schedule_window = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    policy.schedule_window = parsed.value();
+                }
             } else if (canonical_key == "traffic.access_group") {
-                policy.access_group = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    policy.access_group = parsed.value();
+                }
             }
         }
 
@@ -460,7 +491,10 @@ namespace timenav {
                     semantics.speed_limit = parsed.value();
                 }
             } else if (canonical_key == "traffic.lane_type" || canonical_key == "traffic.lane_kind") {
-                semantics.lane_type = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.lane_type = dp::String{detail::lower_copy(std::string(parsed.value().c_str()))};
+                }
             } else if (canonical_key == "traffic.reversible") {
                 const auto parsed = parse_traffic_bool(value);
                 if (parsed.is_ok()) {
@@ -513,11 +547,20 @@ namespace timenav {
                     semantics.clearance_height = parsed.value();
                 }
             } else if (canonical_key == "traffic.surface_type") {
-                semantics.surface_type = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.surface_type = parsed.value();
+                }
             } else if (canonical_key == "traffic.robot_class") {
-                semantics.robot_class = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.robot_class = parsed.value();
+                }
             } else if (canonical_key == "traffic.allowed_payload") {
-                semantics.allowed_payload = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.allowed_payload = parsed.value();
+                }
             } else if (canonical_key == "traffic.cost_bias") {
                 const auto parsed = parse_traffic_f64(value);
                 if (parsed.is_ok()) {
@@ -529,11 +572,20 @@ namespace timenav {
                     semantics.no_stop = parsed.value();
                 }
             } else if (canonical_key == "traffic.preferred_direction" || canonical_key == "traffic.direction") {
-                semantics.preferred_direction = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.preferred_direction = dp::String{detail::lower_copy(std::string(parsed.value().c_str()))};
+                }
             } else if (canonical_key == "traffic.schedule_window") {
-                semantics.schedule_window = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.schedule_window = parsed.value();
+                }
             } else if (canonical_key == "traffic.access_group") {
-                semantics.access_group = dp::String{value};
+                const auto parsed = parse_traffic_string(value);
+                if (parsed.is_ok()) {
+                    semantics.access_group = parsed.value();
+                }
             }
         }
 
@@ -654,6 +706,14 @@ namespace timenav {
                 if (parse_traffic_string(value).is_err()) {
                     issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Error, dp::String{key},
                                                        dp::String{"traffic string key must not be empty"}});
+                } else if ((canonical_key == "traffic.lane_type" || canonical_key == "traffic.lane_kind") &&
+                           !detail::is_known_lane_type(value)) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
+                                                       dp::String{"unknown lane type keyword"}});
+                } else if ((canonical_key == "traffic.preferred_direction" || canonical_key == "traffic.direction") &&
+                           !detail::is_known_preferred_direction(value)) {
+                    issues.push_back(TrafficParseIssue{TrafficIssueSeverity::Warning, dp::String{key},
+                                                       dp::String{"unknown preferred direction keyword"}});
                 }
             }
         }

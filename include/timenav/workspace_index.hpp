@@ -7,6 +7,8 @@
 #include <concord/concord.hpp>
 #include <zoneout/zoneout.hpp>
 
+#include "zone_policy.hpp"
+
 namespace timenav {
 
     struct ValidationIssue {
@@ -249,6 +251,22 @@ namespace timenav {
                                                             "global; concord conversions are disabled"}});
             }
 
+            for (const auto &zone_id : duplicate_zone_ids_) {
+                issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"duplicate_id"},
+                                                 dp::String{"zone"}, zone_id,
+                                                 dp::String{"multiple zones share the same UUID"}});
+            }
+            for (const auto &node_id : duplicate_node_ids_) {
+                issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"duplicate_id"},
+                                                 dp::String{"node"}, node_id,
+                                                 dp::String{"multiple nodes share the same UUID"}});
+            }
+            for (const auto &edge_id : duplicate_edge_ids_) {
+                issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"duplicate_id"},
+                                                 dp::String{"edge"}, edge_id,
+                                                 dp::String{"multiple edges share the same UUID"}});
+            }
+
             for (const auto &[zone_id, zone_data] : zones_) {
                 if (zone_id.isNull()) {
                     issues.push_back(ValidationIssue{ValidationIssue::Severity::Error, dp::String{"missing_id"},
@@ -270,6 +288,14 @@ namespace timenav {
                             ValidationIssue::Severity::Error, dp::String{"inconsistent_membership"}, dp::String{"zone"},
                             zone_id, dp::String{"zone lists node membership but the node does not list the zone"}});
                     }
+                }
+
+                for (const auto &parse_issue : validate_zone_traffic_properties(zone_data->properties())) {
+                    issues.push_back(ValidationIssue{parse_issue.severity == TrafficIssueSeverity::Error
+                                                         ? ValidationIssue::Severity::Error
+                                                         : ValidationIssue::Severity::Warning,
+                                                     dp::String{"traffic_property"}, dp::String{"zone"}, zone_id,
+                                                     parse_issue.key + dp::String{": "} + parse_issue.message});
                 }
             }
 
@@ -321,6 +347,14 @@ namespace timenav {
                             dp::String{"edge lists a zone that is not present on either endpoint node"}});
                     }
                 }
+
+                for (const auto &parse_issue : validate_edge_traffic_properties(edge_data.properties)) {
+                    issues.push_back(ValidationIssue{parse_issue.severity == TrafficIssueSeverity::Error
+                                                         ? ValidationIssue::Severity::Error
+                                                         : ValidationIssue::Severity::Warning,
+                                                     dp::String{"traffic_property"}, dp::String{"edge"}, edge_uuid,
+                                                     parse_issue.key + dp::String{": "} + parse_issue.message});
+                }
             }
 
             return issues;
@@ -344,7 +378,13 @@ namespace timenav {
         }
 
         void index_zone_tree(const zoneout::Zone &zone, const zoneout::Zone *parent) {
-            zones_[zone.id()] = &zone;
+            if (zone.id().isNull()) {
+                zones_[zone.id()] = &zone;
+            } else if (zones_.contains(zone.id())) {
+                append_duplicate_id(duplicate_zone_ids_, zone.id());
+            } else {
+                zones_[zone.id()] = &zone;
+            }
             if (parent != nullptr) {
                 parents_[zone.id()] = parent;
                 children_[parent->id()].push_back(&zone);
@@ -362,6 +402,9 @@ namespace timenav {
             parents_.clear();
             children_.clear();
             nodes_by_zone_.clear();
+            duplicate_zone_ids_.clear();
+            duplicate_node_ids_.clear();
+            duplicate_edge_ids_.clear();
 
             if (workspace_ == nullptr) {
                 return;
@@ -369,13 +412,29 @@ namespace timenav {
 
             index_zone_tree(workspace_->root_zone(), nullptr);
             for (const auto vertex_id : workspace_->graph().vertices()) {
-                nodes_[workspace_->graph()[vertex_id].id] = vertex_id;
+                const auto node_id = workspace_->graph()[vertex_id].id;
+                if (!node_id.isNull() && nodes_.contains(node_id)) {
+                    append_duplicate_id(duplicate_node_ids_, node_id);
+                } else {
+                    nodes_[node_id] = vertex_id;
+                }
                 for (const auto &zone_id : workspace_->graph()[vertex_id].zone_ids) {
                     nodes_by_zone_[zone_id].push_back(vertex_id);
                 }
             }
             for (const auto &edge : workspace_->graph().edges()) {
-                edges_[workspace_->graph().edge_property(edge.id).id] = edge.id;
+                const auto edge_uuid = workspace_->graph().edge_property(edge.id).id;
+                if (!edge_uuid.isNull() && edges_.contains(edge_uuid)) {
+                    append_duplicate_id(duplicate_edge_ids_, edge_uuid);
+                } else {
+                    edges_[edge_uuid] = edge.id;
+                }
+            }
+        }
+
+        static void append_duplicate_id(dp::Vector<zoneout::UUID> &ids, const zoneout::UUID &id) {
+            if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
+                ids.push_back(id);
             }
         }
 
@@ -387,6 +446,9 @@ namespace timenav {
         std::unordered_map<zoneout::UUID, const zoneout::Zone *, zoneout::UUIDHash> parents_{};
         std::unordered_map<zoneout::UUID, dp::Vector<const zoneout::Zone *>, zoneout::UUIDHash> children_{};
         std::unordered_map<zoneout::UUID, dp::Vector<zoneout::Graph::VertexId>, zoneout::UUIDHash> nodes_by_zone_{};
+        dp::Vector<zoneout::UUID> duplicate_zone_ids_{};
+        dp::Vector<zoneout::UUID> duplicate_node_ids_{};
+        dp::Vector<zoneout::UUID> duplicate_edge_ids_{};
     };
 
 } // namespace timenav
